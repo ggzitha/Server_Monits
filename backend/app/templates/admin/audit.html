@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('nav_audit') }} - {{ _('app_name') }}{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 1.5rem;">
+  <h2 style="color: var(--accent-cyan); font-size: 1.4rem;">{{ _('nav_audit') }}</h2>
+  <p style="color: var(--text-muted); font-size: 0.85rem;">Security events, user logins, and administrative modifications</p>
+</div>
+
+<div class="card">
+  <table class="data-table" id="auditTable">
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Action</th>
+        <th>Resource</th>
+        <th>IP Address</th>
+        <th>Details</th>
+      </tr>
+    </thead>
+    <tbody id="auditTableBody">
+      <tr>
+        <td colspan="5" style="text-align: center; color: var(--text-muted);">Loading audit logs...</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function loadAuditLogs() {
+    try {
+      const res = await fetch('/api/v1/audit/logs');
+      const data = await res.json();
+      const tbody = document.getElementById('auditTableBody');
+      tbody.innerHTML = '';
+
+      if (!data.items || data.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">No audit logs recorded</td></tr>';
+        return;
+      }
+
+      data.items.forEach(log => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="color: var(--text-muted); font-size: 0.8rem; font-family: monospace;">${new Date(log.created_at).toLocaleString()}</td>
+          <td><span class="badge badge-cyan">${log.action}</span></td>
+          <td>${log.resource_type || '-'} ${log.resource_id ? `(${log.resource_id.substring(0,8)}...)` : ''}</td>
+          <td style="font-family: monospace; font-size: 0.8rem;">${log.ip_address || '-'}</td>
+          <td style="font-size: 0.8rem; color: var(--text-muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            ${JSON.stringify(log.details)}
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  loadAuditLogs();
+</script>
+{% endblock %}
+

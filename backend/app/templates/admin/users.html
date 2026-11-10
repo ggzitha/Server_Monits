@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('nav_users') }} - {{ _('app_name') }}{% endblock %}
+
+{% block content %}
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+  <div>
+    <h2 style="color: var(--accent-cyan); font-size: 1.4rem;">{{ _('nav_users') }}</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">Manage user credentials, roles, and access controls</p>
+  </div>
+  <button class="btn btn-primary btn-sm" onclick="openCreateUserModal()">+ Add User</button>
+</div>
+
+<div class="card">
+  <table class="data-table" id="usersTable">
+    <thead>
+      <tr>
+        <th>Username</th>
+        <th>Email</th>
+        <th>Roles</th>
+        <th>2FA</th>
+        <th>Status</th>
+        <th>Created</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody id="usersTableBody">
+      <tr>
+        <td colspan="7" style="text-align: center; color: var(--text-muted);">Loading users...</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Simple Create User Modal -->
+<div id="createUserModal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px); z-index: 200; align-items: center; justify-content: center;">
+  <div class="card" style="max-width: 480px; width: 100%; margin: auto;">
+    <h3 style="margin-bottom: 1rem; color: var(--accent-cyan);">Create New User</h3>
+    
+    <div id="modalAlert" style="display: none;"></div>
+
+    <div class="form-group">
+      <label class="form-label">Username</label>
+      <input type="text" id="newUsername" class="form-control" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" id="newEmail" class="form-control" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Password</label>
+      <input type="password" id="newPassword" class="form-control" required>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Role</label>
+      <select id="newRole" class="form-control">
+        <option value="Operator">Operator</option>
+        <option value="Viewer" selected>Viewer</option>
+        <option value="Security Officer">Security Officer</option>
+        <option value="Admin">Admin</option>
+      </select>
+    </div>
+
+    <div style="display: flex; gap: 0.75rem; justify-content: flex-end; margin-top: 1.5rem;">
+      <button class="btn btn-secondary" onclick="closeCreateUserModal()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitCreateUser()">Save User</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  async function loadUsers() {
+    try {
+      const res = await fetch('/api/v1/users');
+      const data = await res.json();
+      const tbody = document.getElementById('usersTableBody');
+      tbody.innerHTML = '';
+
+      if (!data.items || data.items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">No users found</td></tr>';
+        return;
+      }
+
+      data.items.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-weight: 600;">${u.username}</td>
+          <td>${u.email}</td>
+          <td>${u.roles.map(r => `<span class="badge badge-cyan">${r}</span>`).join(' ')}</td>
+          <td>${u.is_totp_enabled ? '✅ Active' : '❌ Off'}</td>
+          <td><span class="badge ${u.is_active ? 'badge-green' : 'badge-danger'}">${u.is_active ? 'Active' : 'Locked'}</span></td>
+          <td style="color: var(--text-muted); font-size: 0.8rem;">${new Date(u.created_at).toLocaleDateString()}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="deleteUser('${u.id}', '${u.username}')">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  function openCreateUserModal() {
+    document.getElementById('createUserModal').style.display = 'flex';
+  }
+
+  function closeCreateUserModal() {
+    document.getElementById('createUserModal').style.display = 'none';
+  }
+
+  async function submitCreateUser() {
+    const payload = {
+      username: document.getElementById('newUsername').value,
+      email: document.getElementById('newEmail').value,
+      password: document.getElementById('newPassword').value,
+      role_names: [document.getElementById('newRole').value],
+    };
+
+    try {
+      const res = await fetch('/api/v1/users', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken(),
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok) {
+        closeCreateUserModal();
+        loadUsers();
+      } else {
+        alert(data.detail || 'Failed to create user');
+      }
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  async function deleteUser(id, username) {
+    if (!confirm(`Are you sure you want to delete user '${username}'?`)) return;
+
+    try {
+      const res = await fetch(`/api/v1/users/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRF-Token': getCsrfToken()
+        }
+      });
+      if (res.ok) {
+        loadUsers();
+      } else {
+        const data = await res.json();
+        alert(data.detail || 'Failed to delete user');
+      }
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  loadUsers();
+</script>
+{% endblock %}
+

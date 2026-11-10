@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('setup_wizard_title') }} - {{ _('app_name') }}{% endblock %}
+
+{% block content %}
+<div class="wizard-container">
+  <div class="card">
+    <div style="text-align: center; margin-bottom: 2rem;">
+      <h1 style="font-size: 1.6rem; color: var(--accent-cyan); margin-bottom: 0.5rem;">
+        {{ _('setup_wizard_title') }}
+      </h1>
+      <p style="color: var(--text-muted); font-size: 0.9rem;">
+        Initialize your server room & data center monitoring system in a few simple steps.
+      </p>
+    </div>
+
+    <!-- Steps bar -->
+    <div class="wizard-steps">
+      <div class="step-indicator active" id="stepIndicator1">
+        <div class="step-num">1</div>
+        <span>Database</span>
+      </div>
+      <div class="step-indicator" id="stepIndicator2">
+        <div class="step-num">2</div>
+        <span>Admin</span>
+      </div>
+      <div class="step-indicator" id="stepIndicator3">
+        <div class="step-num">3</div>
+        <span>Preferences</span>
+      </div>
+    </div>
+
+    <div id="alertBox" style="display: none;"></div>
+
+    <!-- Step 1: Database -->
+    <div id="step1">
+      <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-main);">
+        {{ _('setup_step_db') }}
+      </h3>
+
+      <div class="form-group">
+        <label class="form-label">Database Engine</label>
+        <select id="dbType" class="form-control" onchange="handleDbTypeChange(this.value)">
+          <option value="postgresql" selected>PostgreSQL (Recommended)</option>
+          <option value="mysql">MySQL 8.0+</option>
+          <option value="mariadb">MariaDB 10.6+</option>
+          {% if debug %}
+          <option value="sqlite">SQLite (Dev / Test only)</option>
+          {% endif %}
+        </select>
+      </div>
+
+      <div id="networkDbFields">
+        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1rem;">
+          <div class="form-group">
+            <label class="form-label">Host</label>
+            <input type="text" id="dbHost" class="form-control" value="localhost">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Port</label>
+            <input type="number" id="dbPort" class="form-control" value="5432">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Database Name</label>
+          <input type="text" id="dbName" class="form-control" value="server_monits">
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+          <div class="form-group">
+            <label class="form-label">Username</label>
+            <input type="text" id="dbUser" class="form-control" value="postgres">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Password</label>
+            <input type="password" id="dbPass" class="form-control" value="postgres">
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+        <button type="button" class="btn btn-secondary" id="btnTestDb" onclick="testDbConnection()">
+          {{ _('test_connection') }}
+        </button>
+        <button type="button" class="btn btn-primary" style="margin-left: auto;" onclick="goToStep(2)">
+          {{ _('save_and_continue') }} &rarr;
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 2: Administrator -->
+    <div id="step2" style="display: none;">
+      <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-main);">
+        {{ _('setup_step_admin') }}
+      </h3>
+      <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 1rem;">
+        Configure the root administrative user.
+      </p>
+
+      <div class="form-group">
+        <label class="form-label">{{ _('username') }}</label>
+        <input type="text" id="adminUser" class="form-control" value="admin">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" id="adminEmail" class="form-control" value="admin@datacenter.internal">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">{{ _('password') }}</label>
+        <input type="password" id="adminPass" class="form-control" value="" required placeholder="Enter strong password (min 8 characters)" autocomplete="new-password">
+      </div>
+
+      <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+        <button type="button" class="btn btn-secondary" onclick="goToStep(1)">&larr; Back</button>
+        <button type="button" class="btn btn-primary" style="margin-left: auto;" onclick="validateStep2AndContinue()">
+          {{ _('save_and_continue') }} &rarr;
+        </button>
+      </div>
+    </div>
+
+    <!-- Step 3: Preferences -->
+    <div id="step3" style="display: none;">
+      <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--text-main);">
+        {{ _('setup_step_prefs') }}
+      </h3>
+
+      <div class="form-group">
+        <label class="form-label">{{ _('language') }}</label>
+        <select id="prefLang" class="form-control">
+          <option value="en" selected>{{ _('lang_en') }}</option>
+          <option value="id">{{ _('lang_id') }}</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">{{ _('theme') }}</label>
+        <select id="prefTheme" class="form-control">
+          <option value="neon" selected>{{ _('theme_neon') }}</option>
+          <option value="light">{{ _('theme_light') }}</option>
+        </select>
+      </div>
+
+      <div style="display: flex; gap: 1rem; margin-top: 1.5rem;">
+        <button type="button" class="btn btn-secondary" onclick="goToStep(2)">&larr; Back</button>
+        <button type="button" class="btn btn-primary" id="btnFinish" style="margin-left: auto;" onclick="submitSetup()">
+          {{ _('finish_setup') }}
+        </button>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let currentStep = 1;
+
+  function handleDbTypeChange(type) {
+    const netFields = document.getElementById('networkDbFields');
+    const portInput = document.getElementById('dbPort');
+    const userInput = document.getElementById('dbUser');
+    
+    if (type === 'sqlite') {
+      netFields.style.display = 'none';
+    } else {
+      netFields.style.display = 'block';
+      if (type === 'postgresql') {
+        portInput.value = 5432;
+        userInput.value = 'postgres';
+      } else {
+        portInput.value = 3306;
+        userInput.value = 'root';
+      }
+    }
+  }
+
+  function showAlert(msg, isSuccess = false) {
+    const box = document.getElementById('alertBox');
+    box.style.display = 'block';
+    box.className = isSuccess ? 'alert alert-success' : 'alert alert-error';
+    box.innerText = msg;
+  }
+
+  function goToStep(step) {
+    document.getElementById(`step${currentStep}`).style.display = 'none';
+    document.getElementById(`stepIndicator${currentStep}`).classList.remove('active');
+    if (step > currentStep) {
+      document.getElementById(`stepIndicator${currentStep}`).classList.add('completed');
+    }
+
+    currentStep = step;
+    document.getElementById(`step${currentStep}`).style.display = 'block';
+    document.getElementById(`stepIndicator${currentStep}`).classList.add('active');
+    document.getElementById('alertBox').style.display = 'none';
+  }
+
+  function validateStep2AndContinue() {
+    const pwd = document.getElementById('adminPass').value;
+    if (!pwd || pwd.length < 8) {
+      showAlert('Administrator password must be at least 8 characters.', false);
+      return;
+    }
+    goToStep(3);
+  }
+
+  async function testDbConnection() {
+    const btn = document.getElementById('btnTestDb');
+    btn.disabled = true;
+    btn.innerText = '{{ _("testing") }}';
+
+    const payload = {
+      db_type: document.getElementById('dbType').value,
+      host: document.getElementById('dbHost').value,
+      port: parseInt(document.getElementById('dbPort').value) || 5432,
+      db_name: document.getElementById('dbName').value,
+      username: document.getElementById('dbUser').value,
+      password: document.getElementById('dbPass').value,
+    };
+
+    try {
+      const res = await fetch('/api/v1/setup/test-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showAlert('{{ _("db_connected") }}', true);
+      } else {
+        showAlert('{{ _("db_failed") }}: ' + (data.message || 'Unknown error'), false);
+      }
+    } catch (e) {
+      showAlert('{{ _("db_failed") }}: ' + e.message, false);
+    } finally {
+      btn.disabled = false;
+      btn.innerText = '{{ _("test_connection") }}';
+    }
+  }
+
+  async function submitSetup() {
+    const btn = document.getElementById('btnFinish');
+    btn.disabled = true;
+    btn.innerText = 'Initializing...';
+
+    const payload = {
+      db_type: document.getElementById('dbType').value,
+      host: document.getElementById('dbHost').value,
+      port: parseInt(document.getElementById('dbPort').value) || 5432,
+      db_name: document.getElementById('dbName').value,
+      username: document.getElementById('dbUser').value,
+      password: document.getElementById('dbPass').value,
+      admin_username: document.getElementById('adminUser').value,
+      admin_email: document.getElementById('adminEmail').value,
+      admin_password: document.getElementById('adminPass').value,
+      default_language: document.getElementById('prefLang').value,
+      default_theme: document.getElementById('prefTheme').value,
+    };
+
+    try {
+      const res = await fetch('/api/v1/setup/initialize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        showAlert('{{ _("setup_complete") }}', true);
+        setTimeout(() => {
+          window.location.href = '/login';
+        }, 1500);
+      } else {
+        showAlert(data.detail || 'Setup failed', false);
+        btn.disabled = false;
+        btn.innerText = '{{ _("finish_setup") }}';
+      }
+    } catch (e) {
+      showAlert('Error: ' + e.message, false);
+      btn.disabled = false;
+      btn.innerText = '{{ _("finish_setup") }}';
+    }
+  }
+</script>
+{% endblock %}
+

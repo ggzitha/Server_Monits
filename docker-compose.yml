@@ -1,0 +1,83 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: server_monits_app
+    restart: unless-stopped
+    # By default, the app is not published to host ports.
+    # Nginx Proxy Manager (NPM) connects via Docker network (or host gateway).
+    # Uncomment the port below only if NPM forwards to host:port or for direct access:
+    # ports:
+    #   - "8000:8000"
+    environment:
+      - APP_ENV=production
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/server_monits
+      # Stream gateway points to existing Frigate instance
+      - GO2RTC_API_URL=${GO2RTC_API_URL:-http://frigate:1984}
+      # External MQTT broker (optional env defaults for headless bootstrap)
+      - MQTT_HOST=${MQTT_HOST:-}
+      - MQTT_PORT=${MQTT_PORT:-1883}
+      - MQTT_USERNAME=${MQTT_USERNAME:-}
+      - MQTT_PASSWORD=${MQTT_PASSWORD:-}
+      - MQTT_TLS=${MQTT_TLS:-false}
+    env_file:
+      - .env
+    volumes:
+      - app_data:/app/data
+      - .env:/app/.env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - monits_net
+      # If Nginx Proxy Manager runs in a shared Docker network (e.g. 'npm_net'),
+      # uncomment the external network below:
+      # - npm_net
+
+  db:
+    # Default: PostgreSQL 16
+    # For MySQL 8.0, use: image: mysql:8.0 with MYSQL_DATABASE, MYSQL_USER, MYSQL_PASSWORD
+    # For MariaDB 11.x, use: image: mariadb:11.2 with MARIADB_DATABASE, MARIADB_USER, MARIADB_PASSWORD
+    image: postgres:16-alpine
+    container_name: server_monits_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-server_monits}
+    # Optional host port for direct management/backups:
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d server_monits"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - monits_net
+
+  # Optional Redis service for high-volume WebSocket fan-out (only if needed)
+  redis:
+    image: redis:7-alpine
+    container_name: server_monits_redis
+    restart: unless-stopped
+    profiles:
+      - with-redis
+    volumes:
+      - redis_data:/data
+    networks:
+      - monits_net
+
+volumes:
+  app_data:
+  postgres_data:
+  redis_data:
+
+networks:
+  monits_net:
+    driver: bridge
+  # npm_net:
+  #   external: true

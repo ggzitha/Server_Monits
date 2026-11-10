@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="{{ current_lang|default('en') }}" data-theme="{{ current_theme|default('neon') }}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}{{ _('app_name') }}{% endblock %}</title>
+  
+  <meta name="csrf-token" content="{{ csrf_token|default('') }}">
+  
+  <link rel="stylesheet" href="/static/css/themes.css">
+  <link rel="stylesheet" href="/static/css/main.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  {% if show_nav|default(true) %}
+  <header class="navbar">
+    <a href="/" class="brand">
+      <span>{{ _('app_name') }}</span>
+      <span class="brand-badge">v1.0</span>
+    </a>
+
+    <ul class="nav-links">
+      <li><a href="/" class="{% if active_tab == 'dashboard' %}active{% endif %}">{{ _('nav_dashboard') }}</a></li>
+      <li><a href="/admin/users" class="{% if active_tab == 'users' %}active{% endif %}">{{ _('nav_users') }}</a></li>
+      <li><a href="/admin/settings" class="{% if active_tab == 'settings' %}active{% endif %}">{{ _('nav_settings') }}</a></li>
+      <li><a href="/admin/audit" class="{% if active_tab == 'audit' %}active{% endif %}">{{ _('nav_audit') }}</a></li>
+    </ul>
+
+    <div class="nav-controls">
+      <!-- Language Switcher -->
+      <select id="langSwitcher" class="form-control" style="width: auto; padding: 0.3rem 0.5rem; font-size: 0.8rem;" onchange="switchLanguage(this.value)">
+        <option value="en" {% if current_lang == 'en' %}selected{% endif %}>EN</option>
+        <option value="id" {% if current_lang == 'id' %}selected{% endif %}>ID</option>
+      </select>
+
+      <!-- Theme Switcher -->
+      <button class="btn btn-secondary btn-sm" onclick="toggleTheme()" title="{{ _('theme') }}">
+        <span id="themeIcon">🌓</span>
+      </button>
+
+      {% if current_user %}
+      <span style="font-size: 0.85rem; color: var(--text-muted); margin-left: 0.5rem;">
+        {{ current_user.username }}
+      </span>
+      <button class="btn btn-secondary btn-sm" onclick="handleLogout()">{{ _('logout') }}</button>
+      {% else %}
+      <a href="/login" class="btn btn-primary btn-sm">{{ _('login') }}</a>
+      {% endif %}
+    </div>
+  </header>
+  {% endif %}
+
+  <main class="{% block main_class %}container{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    // Client-side theme toggler
+    function toggleTheme() {
+      const html = document.documentElement;
+      const current = html.getAttribute('data-theme') || 'neon';
+      const next = current === 'neon' ? 'light' : 'neon';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('monit_theme', next);
+      document.cookie = `monit_theme=${next}; path=/; max-age=31536000`;
+      
+      // Update profile if logged in
+      fetch('/api/v1/auth/me', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken()
+        },
+        body: JSON.stringify({ preferred_theme: next })
+      }).catch(() => {});
+    }
+
+    // Language switcher
+    function switchLanguage(lang) {
+      document.cookie = `monit_lang=${lang}; path=/; max-age=31536000`;
+      fetch('/api/v1/auth/me', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': getCsrfToken()
+        },
+        body: JSON.stringify({ preferred_lang: lang })
+      }).finally(() => {
+        window.location.reload();
+      });
+    }
+
+    function getCsrfToken() {
+      const meta = document.querySelector('meta[name="csrf-token"]');
+      if (meta && meta.content) return meta.content;
+      const match = document.cookie.match(/csrf_token=([^;]+)/);
+      return match ? match[1] : '';
+    }
+
+    async function handleLogout() {
+      try {
+        await fetch('/api/v1/auth/logout', {
+          method: 'POST',
+          headers: { 'X-CSRF-Token': getCsrfToken() }
+        });
+      } finally {
+        window.location.href = '/login';
+      }
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>
+

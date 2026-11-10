@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% set show_nav = false %}
+
+{% block main_class %}monits-app-main{% endblock %}
+
+{% block title %}{{ _('nav_dashboard') }} - {{ _('app_name') }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  html, body {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #070b14;
+    color: #e1e9f5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  .monits-app-main {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Single Unified Header - Crisp Edge-to-Edge Alignment */
+  .monits-top-navbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 52px;
+    min-height: 52px;
+    padding: 0 1.25rem;
+    background: rgba(14, 21, 38, 0.98);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.25);
+    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+  }
+
+  .monits-brand-zone {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .monits-brand-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #00f0ff;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .monits-mode-switcher {
+    display: flex;
+    align-items: center;
+    background: rgba(7, 11, 20, 0.75);
+    border: 1px solid rgba(120, 170, 255, 0.2);
+    border-radius: 999px;
+    padding: 3px;
+    margin-left: 1rem;
+    gap: 3px;
+  }
+
+  .monits-mode-btn {
+    border: none;
+    background: transparent;
+    color: #9cb3d9;
+    padding: 5px 14px;
+    border-radius: 999px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .monits-mode-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .monits-mode-btn.active {
+    background: #00f0ff;
+    color: #06101c;
+    box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
+  }
+
+  .monits-new-btn {
+    border: 1px solid rgba(0, 240, 255, 0.4);
+    background: rgba(0, 240, 255, 0.1);
+    color: #00f0ff;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    margin-left: 0.5rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    transition: all 0.2s ease;
+  }
+
+  .monits-new-btn:hover {
+    background: rgba(0, 240, 255, 0.25);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
+  }
+
+  .monits-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+  }
+
+  .monits-nav-link {
+    color: #9cb3d9;
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+  }
+
+  .monits-nav-link:hover {
+    color: #00f0ff;
+    background: rgba(0, 240, 255, 0.08);
+  }
+
+  .monits-divider {
+    width: 1px;
+    height: 18px;
+    background: rgba(120, 170, 255, 0.25);
+  }
+
+  .monits-viewport-container {
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+    background: #070b14;
+  }
+
+  nextfloor-panel {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+</style>
+<script src="/static/nextfloor/basic-types.js"></script>
+<script src="/static/nextfloor/pack-ids.js"></script>
+<script src="/static/nextfloor/pack-names.js"></script>
+{% endblock %}
+
+{% block content %}
+<!-- Single Unified Application Header -->
+<header class="monits-top-navbar">
+  <div class="monits-brand-zone">
+    <div class="monits-brand-title">
+      <span>Server_Monits</span>
+      <span style="font-size: 0.7rem; padding: 2px 6px; background: rgba(0, 240, 255, 0.15); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 4px; color: #00f0ff;">
+        {{ '3D Fasilitas' if current_lang == 'id' else '3D Facility' }}
+      </span>
+    </div>
+
+    <!-- Mode Selector: 3D Monitor vs 3D CAD Editor -->
+    <div class="monits-mode-switcher">
+      <button id="btnViewMode" class="monits-mode-btn active" onclick="switchUIMode('view')">
+        <span>👁️</span>
+        <span>{{ 'Pantau 3D' if current_lang == 'id' else '3D Monitor' }}</span>
+      </button>
+      <button id="btnEditMode" class="monits-mode-btn" onclick="switchUIMode('editor')">
+        <span>✏️</span>
+        <span>{{ 'Editor Denah 3D' if current_lang == 'id' else '3D CAD Editor' }}</span>
+      </button>
+    </div>
+
+    <!-- New Floor Plan Design Action -->
+    <button class="monits-new-btn" onclick="startNewFloorPlan()" title="{{ 'Buat denah 3D fasilitas baru dari nol' if current_lang == 'id' else 'Create a brand new 3D facility floor plan from scratch' }}">
+      <span>➕</span>
+      <span>{{ 'Desain Baru' if current_lang == 'id' else 'New Design' }}</span>
+    </button>
+  </div>
+
+  <div class="monits-nav-actions">
+    <a href="/admin/users" class="monits-nav-link">{{ 'Pengguna' if current_lang == 'id' else 'Users' }}</a>
+    <a href="/admin/settings" class="monits-nav-link">{{ 'Pengaturan' if current_lang == 'id' else 'Settings' }}</a>
+    <a href="/admin/audit" class="monits-nav-link">{{ 'Audit' if current_lang == 'id' else 'Audit' }}</a>
+
+    <div class="monits-divider"></div>
+
+    <!-- Strict EN / ID Language Selector -->
+    <select id="langSwitcher" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background: rgba(7, 11, 20, 0.8); color: #00f0ff; border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 6px;" onchange="switchLanguage(this.value)">
+      <option value="en" {% if current_lang == 'en' %}selected{% endif %}>English (EN)</option>
+      <option value="id" {% if current_lang == 'id' %}selected{% endif %}>Bahasa Indonesia (ID)</option>
+    </select>
+
+    <div class="monits-divider"></div>
+
+    {% if current_user %}
+    <span style="font-size: 0.85rem; color: #9cb3d9;">{{ current_user.username }}</span>
+    <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;" onclick="handleLogout()">
+      {{ 'Keluar' if current_lang == 'id' else 'Logout' }}
+    </button>
+    {% else %}
+    <a href="/login" class="btn btn-primary btn-sm">{{ 'Masuk' if current_lang == 'id' else 'Login' }}</a>
+    {% endif %}
+  </div>
+</header>
+
+<!-- Main Viewport Area -->
+<div class="monits-viewport-container">
+  <nextfloor-panel id="monitPanel"></nextfloor-panel>
+</div>
+
+<script type="module">
+  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js";
+
+  const currentLang = "{{ current_lang|default('en') }}";
+
+  // Ensure NextFloor fills the exact viewport with clean edge-to-edge alignment
+  function hideDuplicateHeader() {
+    const panel = document.getElementById("monitPanel");
+    if (panel && panel.shadowRoot) {
+      if (!panel.shadowRoot.getElementById("monits-header-cleaner")) {
+        const style = document.createElement("style");
+        style.id = "monits-header-cleaner";
+        style.textContent = `
+          :host {
+            height: 100% !important;
+            max-height: 100% !important;
+            display: flex !important;
+            flex-direction: column !important;
+          }
+          .nf-header { display: none !important; }
+          .nf-body { flex: 1 !important; min-height: 0 !important; height: 100% !important; }
+        `;
+        panel.shadowRoot.appendChild(style);
+      }
+    }
+  }
+
+  // Switch between 3D Monitor (view) and 3D CAD Editor (editor)
+  window.switchUIMode = function(mode) {
+    const panel = document.getElementById("monitPanel");
+    if (!panel) return;
+
+    panel._mode = mode;
+    panel.requestUpdate();
+
+    const btnView = document.getElementById("btnViewMode");
+    const btnEdit = document.getElementById("btnEditMode");
+
+    if (mode === "editor") {
+      btnView.classList.remove("active");
+      btnEdit.classList.add("active");
+    } else {
+      btnEdit.classList.remove("active");
+      btnView.classList.add("active");
+    }
+
+    setTimeout(hideDuplicateHeader, 50);
+  };
+
+  // Start a fresh, clean 3D facility design from scratch
+  window.startNewFloorPlan = function() {
+    const isId = currentLang === "id";
+    const msg = isId 
+      ? "Buat denah fasilitas 3D baru dari awal? Perubahan saat ini dapat disimpan."
+      : "Start a new 3D facility layout from scratch? Current layout can be saved first.";
+
+    if (confirm(msg)) {
+      const panel = document.getElementById("monitPanel");
+      if (panel && panel.data) {
+        const newFloorName = isId ? "Lantai Dasar" : "Ground Floor";
+        panel.data.edit({
+          version: 1,
+          settings: { grid: 0.1, wall_exterior: 0.25, wall_interior: 0.15 },
+          floors: [
+            {
+              id: "floor_ground",
+              name: newFloorName,
+              elevation: 0,
+              height: 3.5,
+              cut_height: 1.2,
+              rooms: [],
+              walls: [],
+              furniture: [],
+              openings: [],
+              placements: [],
+              background: null
+            }
+          ]
+        });
+        window.switchUIMode("editor");
+      }
+    }
+  };
+
+  async function init() {
+    try {
+      await import("/static/nextfloor/nextfloor.js");
+
+      const panel = document.getElementById("monitPanel");
+      if (panel) {
+        const hass = await createNextFloorHass({
+          lang: currentLang,
+          isAdmin: {{ 'true' if current_user and current_user.is_admin else 'false' }},
+          username: "{{ current_user.username if current_user else 'Admin' }}"
+        });
+
+        panel.hass = hass;
+        panel.narrow = window.innerWidth < 870;
+        window.nfPanel = panel;
+
+        // Ensure duplicate internal header is suppressed
+        setInterval(hideDuplicateHeader, 250);
+      }
+    } catch (err) {
+      console.error("Failed to initialize NextFloor interface:", err);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+</script>
+{% endblock %}

@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('login') }} - {{ _('app_name') }}{% endblock %}
+
+{% block content %}
+<div style="max-width: 440px; margin: 5rem auto; width: 100%;">
+  <div class="card" style="box-shadow: var(--card-shadow); border: 1px solid var(--border-color);">
+    <div style="text-align: center; margin-bottom: 1.5rem;">
+      <h2 style="font-size: 1.4rem; color: var(--accent-cyan); margin-bottom: 0.25rem;">
+        {{ _('welcome') }}
+      </h2>
+      <p style="color: var(--text-muted); font-size: 0.85rem;">
+        {{ _('app_name') }}
+      </p>
+    </div>
+
+    <div id="loginAlert" style="display: none;"></div>
+
+    <!-- Password form -->
+    <form id="loginForm" onsubmit="handleLoginSubmit(event)">
+      <div class="form-group">
+        <label class="form-label">{{ _('username') }}</label>
+        <input type="text" id="loginUsername" class="form-control" required autofocus autocomplete="username">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">{{ _('password') }}</label>
+        <input type="password" id="loginPassword" class="form-control" required autocomplete="current-password">
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; font-size: 0.85rem;">
+        <label style="display: flex; align-items: center; gap: 0.5rem; color: var(--text-muted); cursor: pointer;">
+          <input type="checkbox" id="rememberMe">
+          <span>{{ _('remember_me') }}</span>
+        </label>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="btnLogin" style="width: 100%;">
+        {{ _('sign_in') }}
+      </button>
+    </form>
+
+    <!-- 2FA Verification Form (Hidden by default) -->
+    <form id="twoFactorForm" style="display: none;" onsubmit="handleTwoFactorSubmit(event)">
+      <div style="text-align: center; margin-bottom: 1rem;">
+        <div style="font-size: 2rem; margin-bottom: 0.5rem;">🔐</div>
+        <h4 style="font-size: 1rem; color: var(--accent-cyan);">{{ _('two_factor_auth') }}</h4>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.25rem;">
+          {{ _('two_factor_prompt') }}
+        </p>
+      </div>
+
+      <div class="form-group">
+        <input type="text" id="totpCode" class="form-control" placeholder="123456" maxlength="6" 
+               style="text-align: center; font-size: 1.5rem; letter-spacing: 0.4rem; font-family: monospace;" required>
+      </div>
+
+      <button type="submit" class="btn btn-primary" id="btnVerify2fa" style="width: 100%; margin-top: 1rem;">
+        {{ _('verify') }}
+      </button>
+      <button type="button" class="btn btn-secondary" style="width: 100%; margin-top: 0.5rem;" onclick="cancel2FA()">
+        Cancel
+      </button>
+    </form>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let twoFactorTempToken = null;
+
+  function showLoginAlert(msg, isSuccess = false) {
+    const el = document.getElementById('loginAlert');
+    el.style.display = 'block';
+    el.className = isSuccess ? 'alert alert-success' : 'alert alert-error';
+    el.innerText = msg;
+  }
+
+  async function handleLoginSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnLogin');
+    btn.disabled = true;
+    btn.innerText = 'Signing in...';
+    document.getElementById('loginAlert').style.display = 'none';
+
+    const payload = {
+      username: document.getElementById('loginUsername').value,
+      password: document.getElementById('loginPassword').value,
+      remember_me: document.getElementById('rememberMe').checked
+    };
+
+    try {
+      const res = await fetch('/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showLoginAlert(data.detail || '{{ _("invalid_credentials") }}');
+        btn.disabled = false;
+        btn.innerText = '{{ _("sign_in") }}';
+        return;
+      }
+
+      if (data.requires_2fa) {
+        twoFactorTempToken = data.temp_token;
+        document.getElementById('loginForm').style.display = 'none';
+        document.getElementById('twoFactorForm').style.display = 'block';
+        document.getElementById('totpCode').focus();
+      } else {
+        showLoginAlert('{{ _("success") }}', true);
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 500);
+      }
+    } catch (err) {
+      showLoginAlert('Network error: ' + err.message);
+      btn.disabled = false;
+      btn.innerText = '{{ _("sign_in") }}';
+    }
+  }
+
+  async function handleTwoFactorSubmit(e) {
+    e.preventDefault();
+    const btn = document.getElementById('btnVerify2fa');
+    btn.disabled = true;
+    btn.innerText = 'Verifying...';
+
+    const payload = {
+      temp_token: twoFactorTempToken,
+      totp_code: document.getElementById('totpCode').value
+    };
+
+    try {
+      const res = await fetch('/api/v1/auth/2fa/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        showLoginAlert(data.detail || 'Invalid verification code');
+        btn.disabled = false;
+        btn.innerText = '{{ _("verify") }}';
+        return;
+      }
+
+      showLoginAlert('{{ _("success") }}', true);
+      setTimeout(() => {
+        window.location.href = '/';
+      }, 500);
+    } catch (err) {
+      showLoginAlert('Network error: ' + err.message);
+      btn.disabled = false;
+      btn.innerText = '{{ _("verify") }}';
+    }
+  }
+
+  function cancel2FA() {
+    twoFactorTempToken = null;
+    document.getElementById('twoFactorForm').style.display = 'none';
+    document.getElementById('loginForm').style.display = 'block';
+    document.getElementById('btnLogin').disabled = false;
+    document.getElementById('btnLogin').innerText = '{{ _("sign_in") }}';
+  }
+</script>
+{% endblock %}
+
