@@ -1,4 +1,4 @@
-// Server_Monits NextFloor Adapter - 100% Detached from Home Assistant, DB-Backed Sensors, Virtual Lights & 3D Cabling
+// Server_Monits 3D Facility Adapter - DB-Backed Building Persistence, Direct DB Sensors, Virtual Lights & 3D Cabling
 import {
   getFacilityData,
   DEMO_PACK,
@@ -63,7 +63,7 @@ export async function createNextFloorHass(options = {}) {
     activeLang = activeLang.startsWith("id") ? "id" : "en";
   }
 
-  // Preload translation tables directly into NextFloor runtime to eliminate any German fallback
+  // Preload translation tables directly into runtime to eliminate any German fallback
   try {
     const [enRes, idRes] = await Promise.all([
       fetch("/static/nextfloor/lang/en.json"),
@@ -86,8 +86,8 @@ export async function createNextFloorHass(options = {}) {
 
   const facility = getFacilityData(activeLang);
   let building = structuredClone(facility.building);
+  let areasMap = structuredClone(facility.areas);
   let revision = 1;
-  let currentPlanId = null;
   const images = { ...DEMO_PICTURES };
   let mainEntry = {
     id: "main",
@@ -97,29 +97,7 @@ export async function createNextFloorHass(options = {}) {
     created: Date.now() / 1000
   };
 
-  // Load saved floor plan from Server_Monits DB if available (and if it has rooms & furniture)
-  try {
-    const res = await fetch("/api/v1/plans");
-    if (res.ok) {
-      const dbPlans = await res.json();
-      if (dbPlans && dbPlans.length > 0) {
-        const first = dbPlans[0];
-        currentPlanId = first.id;
-        const detailRes = await fetch(`/api/v1/plans/${first.id}`);
-        if (detailRes.ok) {
-          const detail = await detailRes.json();
-          if (detail.metadata_json && detail.metadata_json.floors && detail.metadata_json.floors.some(f => f.rooms && f.rooms.length > 0)) {
-            building = detail.metadata_json;
-            mainEntry.name = detail.name || mainEntry.name;
-          }
-        }
-      }
-    }
-  } catch (e) {
-    console.warn("Using default Data Center 3D model:", e);
-  }
-
-  const history = [
+  let history = [
     {
       id: "s1",
       revision: 1,
@@ -128,6 +106,53 @@ export async function createNextFloorHass(options = {}) {
       building: structuredClone(building)
     }
   ];
+
+  // Auto-sync rooms inside building.floors with areasMap so newly drawn rooms in Editor always have an area_id
+  function syncRoomsToAreas(b) {
+    if (!b || !Array.isArray(b.floors)) return;
+    for (const fl of b.floors) {
+      for (const rm of fl.rooms || []) {
+        const aid = rm.ha_area || rm.id;
+        if (aid) {
+          if (!rm.ha_area) rm.ha_area = aid;
+          if (!areasMap[aid]) {
+            areasMap[aid] = {
+              area_id: aid,
+              name: rm.name || aid,
+              floor_id: fl.ha_floor || fl.id || "ground"
+            };
+          } else if (rm.name) {
+            areasMap[aid].name = rm.name;
+          }
+        }
+      }
+    }
+  }
+
+  // Load saved 3D building from Server_Monits Database (/api/v1/sensors/building)
+  try {
+    const bRes = await fetch("/api/v1/sensors/building");
+    if (bRes.ok) {
+      const bData = await bRes.json();
+      if (bData && bData.saved && bData.building && Array.isArray(bData.building.floors) && bData.building.floors.length > 0) {
+        building = bData.building;
+        if (bData.name) mainEntry.name = bData.name;
+        if (bData.site) mainEntry.site = bData.site;
+        if (bData.areas && typeof bData.areas === "object") {
+          areasMap = { ...areasMap, ...bData.areas };
+        }
+        if (Array.isArray(bData.snapshots) && bData.snapshots.length > 0) {
+          history = bData.snapshots;
+        }
+        if (typeof bData.revision === "number") {
+          revision = bData.revision;
+        }
+        syncRoomsToAreas(building);
+      }
+    }
+  } catch (e) {
+    console.warn("Using default Data Center 3D model:", e);
+  }
 
   let entitiesMap = { ...DEMO_ENTITIES };
   let statesMap = structuredClone(DEMO_STATES);
@@ -184,6 +209,43 @@ export async function createNextFloorHass(options = {}) {
         }
       };
     }
+
+    // If the sensor has explicit 3D placement coordinates in DB, ensure its pins exist on that floor
+    if (s.placement_x !== null && s.placement_x !== undefined && s.placement_z !== null && s.placement_z !== undefined) {
+      const targetFloor = (building.floors || []).find(f => f.id === (s.floor_id || "ground")) || (building.floors || [])[0];
+      if (targetFloor) {
+        targetFloor.placements = targetFloor.placements || [];
+        const px = Number(s.placement_x);
+        const pz = Number(s.placement_z);
+        const py = s.placement_y !== null && s.placement_y !== undefined ? Number(s.placement_y) : 1.5;
+
+        const existingTemp = targetFloor.placements.find(p => p.entity_id === tempId);
+        if (!existingTemp) {
+          targetFloor.placements.push({ entity_id: tempId, x: px, z: pz });
+        }
+        const existingHum = targetFloor.placements.find(p => p.entity_id === humId);
+        if (!existingHum) {
+          targetFloor.placements.push({ entity_id: humId, x: Math.round((px + 0.35) * 100) / 100, z: pz });
+        }
+        targetFloor.furniture = targetFloor.furniture || [];
+        const unitId = `sensor_unit_${ident}`;
+        if (!targetFloor.furniture.some(f => f.id === unitId)) {
+          targetFloor.furniture.push({
+            id: unitId,
+            type: "pack:dcim.facility:thermohygro_sensor",
+            name: s.name || ident,
+            show_name: true,
+            x: px,
+            z: pz,
+            w: 0.22,
+            d: 0.08,
+            h: 0.26,
+            mount_y: py,
+            rotation: 0
+          });
+        }
+      }
+    }
   }
 
   let dbSensorsCache = [];
@@ -218,12 +280,12 @@ export async function createNextFloorHass(options = {}) {
     console.warn("Virtual states fetch deferred:", e);
   }
 
-  // Push fresh hass reference into <nextfloor-panel> so LitElement detects `changed.has("hass")`
   function pushHassToPanel() {
     hass.states = { ...statesMap };
     hass.entities = { ...entitiesMap };
+    hass.areas = { ...areasMap };
     if (window.nfPanel) {
-      window.nfPanel.hass = { ...hass, states: hass.states, entities: hass.entities };
+      window.nfPanel.hass = { ...hass, states: hass.states, entities: hass.entities, areas: hass.areas };
       window.nfPanel.requestUpdate();
     }
     window.dispatchEvent(new CustomEvent("monits-state-changed", { detail: { states: hass.states, sensors: dbSensorsCache } }));
@@ -248,6 +310,37 @@ export async function createNextFloorHass(options = {}) {
     }
   }
 
+  async function persistBuildingToDatabase(bToSave) {
+    if (!bToSave) return false;
+    building = structuredClone(bToSave);
+    syncRoomsToAreas(building);
+    try {
+      localStorage.removeItem("nextfloor.unsaved");
+    } catch (e) {}
+
+    try {
+      const res = await fetch("/api/v1/sensors/building", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-Token": getCsrfToken()
+        },
+        body: JSON.stringify({
+          building,
+          name: mainEntry.name || "Main Server Facility",
+          site: mainEntry.site || "Datacenter Alpha",
+          areas: areasMap,
+          snapshots: history.slice(-15),
+          revision
+        })
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn("Building DB save error:", e);
+      return false;
+    }
+  }
+
   const hass = {
     language: activeLang,
     selectedTheme: { dark: true },
@@ -263,7 +356,7 @@ export async function createNextFloorHass(options = {}) {
       name: options.username || "Admin"
     },
     floors: facility.floors,
-    areas: facility.areas,
+    areas: areasMap,
     devices: {},
     entities: entitiesMap,
     states: statesMap,
@@ -337,46 +430,10 @@ export async function createNextFloorHass(options = {}) {
       }
 
       if (type === "nextfloor/building/save" || type === "neonplan3d/building/save") {
-        building = structuredClone(msg.building);
         revision += 1;
+        await persistBuildingToDatabase(msg.building);
+        pushHassToPanel();
         for (const cb of listeners) cb({ revision });
-
-        try {
-          if (currentPlanId) {
-            await fetch(`/api/v1/plans/${currentPlanId}`, {
-              method: "PUT",
-              headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-Token": getCsrfToken()
-              },
-              body: JSON.stringify({
-                name: mainEntry.name || "Main Server Facility",
-                site_name: mainEntry.site || "Datacenter Alpha",
-                metadata_json: building
-              })
-            });
-          } else {
-            const createRes = await fetch("/api/v1/plans", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-CSRF-Token": getCsrfToken()
-              },
-              body: JSON.stringify({
-                name: mainEntry.name || "Main Server Facility",
-                site_name: mainEntry.site || "Datacenter Alpha",
-                metadata_json: building
-              })
-            });
-            if (createRes.ok) {
-              const created = await createRes.json();
-              currentPlanId = created.id;
-            }
-          }
-        } catch (e) {
-          console.warn("Async save to API skipped/failed:", e);
-        }
-
         return { revision };
       }
 
@@ -397,6 +454,7 @@ export async function createNextFloorHass(options = {}) {
       if (type === "nextfloor/history/snapshot" || type === "neonplan3d/history/snapshot") {
         const id = `s${history.length + 1}`;
         history.push({ id, revision, saved_at: Date.now() / 1000, building: structuredClone(building), ...(msg.name ? { name: msg.name } : {}) });
+        await persistBuildingToDatabase(building);
         return { id };
       }
 
@@ -409,8 +467,8 @@ export async function createNextFloorHass(options = {}) {
       if (type === "nextfloor/history/restore" || type === "neonplan3d/history/restore") {
         const snap = history.find((h) => h.id === msg.snapshot_id);
         if (snap) {
-          building = structuredClone(snap.building);
           revision += 1;
+          await persistBuildingToDatabase(snap.building);
           for (const cb of listeners) cb({ revision });
         }
         return { revision };
@@ -419,6 +477,7 @@ export async function createNextFloorHass(options = {}) {
       if (type === "nextfloor/history/delete") {
         const idx = history.findIndex((h) => h.id === msg.snapshot_id);
         if (idx >= 0) history.splice(idx, 1);
+        await persistBuildingToDatabase(building);
         return null;
       }
 
@@ -492,11 +551,30 @@ export async function createNextFloorHass(options = {}) {
     }
   };
 
-  // Expose programmatic API for our Integrated Header Drawers (Virtual Lights, DB Sensors, 3D Cable Routing)
+  // Expose programmatic API for Integrated Header & Drawers
   window.monitsApi = {
     getStates: () => statesMap,
     getSensors: () => dbSensorsCache,
-    getBuilding: () => building,
+    getBuilding: () => (window.nfPanel?.data?.building || building),
+    getAreas: () => areasMap,
+    async saveBuildingNow(customBuilding = null) {
+      const panel = window.nfPanel;
+      if (panel && panel.data) {
+        if (customBuilding) {
+          panel.data.building = structuredClone(customBuilding);
+        }
+        try {
+          await panel.data.flush();
+        } catch (e) {}
+      }
+      const target = customBuilding || panel?.data?.building || building;
+      const ok = await persistBuildingToDatabase(target);
+      if (panel && panel.data) {
+        panel.data.saveState = ok ? "saved" : "error";
+        panel.requestUpdate();
+      }
+      return ok;
+    },
     async refreshSensorsFromDb() {
       const res = await fetch("/api/v1/sensors");
       if (res.ok) {
@@ -508,7 +586,7 @@ export async function createNextFloorHass(options = {}) {
       }
       return dbSensorsCache;
     },
-    async pushDbSensorReading({ identifier, area_id, temperature, humidity, power_kw }) {
+    async pushDbSensorReading({ identifier, name, area_id, floor_id, placement_x, placement_z, placement_y, temperature, humidity, power_kw }) {
       const res = await fetch("/api/v1/sensors/readings", {
         method: "POST",
         headers: {
@@ -517,13 +595,132 @@ export async function createNextFloorHass(options = {}) {
         },
         body: JSON.stringify({
           identifier,
-          area_id,
-          temperature: temperature !== "" && temperature !== null ? Number(temperature) : null,
-          humidity: humidity !== "" && humidity !== null ? Number(humidity) : null,
-          power_kw: power_kw !== "" && power_kw !== null ? Number(power_kw) : null
+          ...(name ? { name } : {}),
+          ...(area_id ? { area_id } : {}),
+          ...(floor_id ? { floor_id } : {}),
+          ...(placement_x !== undefined && placement_x !== null && placement_x !== "" ? { placement_x: Number(placement_x) } : {}),
+          ...(placement_z !== undefined && placement_z !== null && placement_z !== "" ? { placement_z: Number(placement_z) } : {}),
+          ...(placement_y !== undefined && placement_y !== null && placement_y !== "" ? { placement_y: Number(placement_y) } : {}),
+          temperature: temperature !== "" && temperature !== null && temperature !== undefined ? Number(temperature) : null,
+          humidity: humidity !== "" && humidity !== null && humidity !== undefined ? Number(humidity) : null,
+          power_kw: power_kw !== "" && power_kw !== null && power_kw !== undefined ? Number(power_kw) : null
         })
       });
       if (res.ok) {
+        await this.refreshSensorsFromDb();
+      }
+      return res.ok;
+    },
+    async addAndPlaceSensorIn3D({ name, identifier, floorId, areaId, x, z, mountY, temperature, humidity, powerKw }) {
+      const cleanName = (name || "Rack Env Sensor").trim();
+      const cleanIdent = (identifier || cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `sensor_${Date.now().toString(36)}`).slice(0, 60);
+      const px = Math.round(Number(x || 3.0) * 100) / 100;
+      const pz = Math.round(Number(z || 2.5) * 100) / 100;
+      const py = Math.round(Number(mountY ?? 1.5) * 100) / 100;
+      const flId = floorId || "ground";
+      const arId = areaId || "server_alpha";
+
+      // 1. Save sensor & initial telemetry to SQLite/PostgreSQL database
+      const ok = await this.pushDbSensorReading({
+        identifier: cleanIdent,
+        name: cleanName,
+        area_id: arId,
+        floor_id: flId,
+        placement_x: px,
+        placement_z: pz,
+        placement_y: py,
+        temperature: temperature ?? 21.5,
+        humidity: humidity ?? 45.0,
+        power_kw: powerKw !== "" && powerKw !== undefined ? powerKw : null
+      });
+      if (!ok) return null;
+
+      // 2. Place 3D Thermohygrograph hardware unit + floating Temperature & Humidity pins in the 3D floor plan
+      const panel = window.nfPanel;
+      const curB = structuredClone(panel?.data?.building || building);
+      const targetFloor = (curB.floors || []).find(f => f.id === flId) || (curB.floors || [])[0];
+      if (targetFloor) {
+        targetFloor.placements = targetFloor.placements || [];
+        const tempEntityId = `sensor.${cleanIdent}_temp`;
+        const humEntityId = `sensor.${cleanIdent}_humidity`;
+
+        // Remove any previous pin for the same entity before placing at new coordinates
+        targetFloor.placements = targetFloor.placements.filter(
+          p => p.entity_id !== tempEntityId && p.entity_id !== humEntityId
+        );
+        targetFloor.placements.push({ entity_id: tempEntityId, x: px, z: pz });
+        targetFloor.placements.push({ entity_id: humEntityId, x: Math.round((px + 0.35) * 100) / 100, z: pz });
+
+        if (powerKw !== "" && powerKw !== null && powerKw !== undefined) {
+          const pwrEntityId = `sensor.${cleanIdent}_power`;
+          targetFloor.placements = targetFloor.placements.filter(p => p.entity_id !== pwrEntityId);
+          targetFloor.placements.push({ entity_id: pwrEntityId, x: Math.round((px + 0.7) * 100) / 100, z: pz });
+        }
+
+        // Also place 3D physical sensor box on the wall/rack at (px, pz, py)
+        targetFloor.furniture = targetFloor.furniture || [];
+        const unitId = `sensor_unit_${cleanIdent}`;
+        targetFloor.furniture = targetFloor.furniture.filter(f => f.id !== unitId);
+        targetFloor.furniture.push({
+          id: unitId,
+          type: "pack:dcim.facility:thermohygro_sensor",
+          name: cleanName,
+          show_name: true,
+          x: px,
+          z: pz,
+          w: 0.22,
+          d: 0.08,
+          h: 0.26,
+          mount_y: py,
+          rotation: 0
+        });
+
+        building = curB;
+        if (panel && panel.data) {
+          panel.data.edit(curB);
+        }
+        await this.saveBuildingNow(curB);
+      }
+
+      return {
+        identifier: cleanIdent,
+        name: cleanName,
+        floorId: flId,
+        areaId: arId,
+        x: px,
+        z: pz,
+        mountY: py
+      };
+    },
+    async deleteSensor(identifier) {
+      const res = await fetch(`/api/v1/sensors/${encodeURIComponent(identifier)}`, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": getCsrfToken() }
+      });
+      if (res.ok) {
+        const tempId = `sensor.${identifier}_temp`;
+        const humId = `sensor.${identifier}_humidity`;
+        const pwrId = `sensor.${identifier}_power`;
+        delete entitiesMap[tempId];
+        delete entitiesMap[humId];
+        delete entitiesMap[pwrId];
+        delete statesMap[tempId];
+        delete statesMap[humId];
+        delete statesMap[pwrId];
+
+        const panel = window.nfPanel;
+        const curB = structuredClone(panel?.data?.building || building);
+        for (const fl of curB.floors || []) {
+          fl.placements = (fl.placements || []).filter(
+            p => p.entity_id !== tempId && p.entity_id !== humId && p.entity_id !== pwrId
+          );
+          fl.furniture = (fl.furniture || []).filter(f => f.id !== `sensor_unit_${identifier}`);
+        }
+        building = curB;
+        if (panel && panel.data) {
+          panel.data.edit(curB);
+        }
+        await this.saveBuildingNow(curB);
         await this.refreshSensorsFromDb();
       }
       return res.ok;
@@ -549,11 +746,10 @@ export async function createNextFloorHass(options = {}) {
     async toggleLayer(layerEntityId) {
       await hass.callService("input_boolean", "toggle", { entity_id: layerEntityId });
     },
-    addCableRunToPlan({ cableType, placementZone, customMountY, floorId, name, x1, z1, x2, z2, variant }) {
+    async addCableRunToPlan({ cableType, placementZone, customMountY, floorId, name, x1, z1, x2, z2, variant }) {
       const panel = window.nfPanel;
-      if (!panel || !panel.data || !panel.data.building) return false;
-      const b = structuredClone(panel.data.building);
-      const targetFloor = b.floors.find(f => f.id === floorId) || b.floors[0];
+      const curB = structuredClone(panel?.data?.building || building);
+      const targetFloor = (curB.floors || []).find(f => f.id === floorId) || (curB.floors || [])[0];
       if (!targetFloor) return false;
 
       const dx = Number(x2) - Number(x1);
@@ -563,7 +759,6 @@ export async function createNextFloorHass(options = {}) {
       const midZ = Math.round(((Number(z1) + Number(z2)) / 2) * 100) / 100;
       const angleDeg = Math.round((Math.atan2(dz, dx) * 180) / Math.PI);
 
-      // Determine mount_y in meters based on placement zone (Below Floor, In Wall, Ceiling)
       let mountY = -0.22;
       if (placementZone === "below_floor") mountY = -0.22;
       else if (placementZone === "wall") mountY = 1.25;
@@ -621,8 +816,11 @@ export async function createNextFloorHass(options = {}) {
       };
 
       targetFloor.furniture = [...(targetFloor.furniture || []), newCable];
-      building = b;
-      panel.data.edit(b);
+      building = curB;
+      if (panel && panel.data) {
+        panel.data.edit(curB);
+      }
+      await this.saveBuildingNow(curB);
       return newCable;
     }
   };
@@ -644,6 +842,10 @@ export async function createNextFloorHass(options = {}) {
             identifier: ident,
             name: data.sensor_name || ident,
             area_id: data.area_id || "server_alpha",
+            floor_id: data.floor_id || "ground",
+            placement_x: data.placement_x,
+            placement_z: data.placement_z,
+            placement_y: data.placement_y,
             current_temperature: data.temperature,
             current_humidity: data.humidity,
             power_kw: data.power_kw,

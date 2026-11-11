@@ -53,7 +53,7 @@
     position: fixed;
     top: 56px;
     right: 16px;
-    width: 430px;
+    width: 450px;
     max-width: calc(100vw - 32px);
     max-height: calc(100vh - 76px);
     background: rgba(13, 19, 34, 0.96);
@@ -158,7 +158,7 @@
 
   .monits-sensor-grid {
     display: grid;
-    grid-template-columns: 1fr 68px 68px 64px auto;
+    grid-template-columns: 1fr 64px 64px 60px auto;
     gap: 6px;
     align-items: center;
     padding: 7px 8px;
@@ -174,7 +174,7 @@
     border: 1px solid rgba(148, 163, 184, 0.3);
     color: #f8fafc;
     border-radius: 6px;
-    padding: 4px 6px;
+    padding: 5px 7px;
     font-size: 0.78rem;
     width: 100%;
     box-sizing: border-box;
@@ -184,7 +184,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
-    font-size: 0.8rem;
+    font-size: 0.78rem;
   }
 
   .monits-form-grid label {
@@ -200,36 +200,82 @@
 {% endblock %}
 
 {% block content %}
-<!-- Main Viewport Area (Single Integrated NextFloor Header + 3D Stage + CAD Editor) -->
+<!-- Main Viewport Area (Single Integrated Header + 3D Stage + CAD Editor) -->
 <div class="monits-viewport-container">
   <nextfloor-panel id="monitPanel"></nextfloor-panel>
 </div>
 
-<!-- Drawer 1: Virtual Lights & Direct Database Sensor Control Panel -->
+<!-- Drawer 1: Place New Temp/Humidity Sensor, Edit DB Sensors & Virtual Lights -->
 <aside id="drawerDevices" class="monits-drawer" aria-label="Virtual Lights & Database Sensors">
   <div class="monits-drawer-header">
     <div class="monits-drawer-title">
       <span>💡</span>
-      <span>{{ 'Kontrol Lampu Virtual & Data Sensor DB' if current_lang == 'id' else 'Virtual Lights & Direct DB Sensors' }}</span>
+      <span>{{ 'Sensor Suhu/Kelembaban DB & Lampu Virtual' if current_lang == 'id' else 'DB Temp/Humidity Sensors & Virtual Lights' }}</span>
     </div>
     <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
   </div>
   <div class="monits-drawer-body">
-    <div>
-      <h4 class="monits-section-title">
-        {{ '1. Sakelar Lampu Ruangan Virtual (Tanpa Home Assistant)' if current_lang == 'id' else '1. Virtual Room Lights (Detached from Home Assistant)' }}
+    <!-- Section 1: Add & Place New Temperature & Humidity Sensor at Specific Place -->
+    <div style="background: rgba(8, 15, 30, 0.9); border: 1px solid rgba(0, 240, 255, 0.28); border-radius: 10px; padding: 10px 12px;">
+      <h4 class="monits-section-title" style="margin-top:0;">
+        {{ '1. Tambah & Tempatkan Sensor Suhu / Kelembaban di Lokasi Spesifik' if current_lang == 'id' else '1. Add & Place Temp / Humidity Sensor at Specific Location' }}
       </h4>
-      <div id="virtualLightsList"></div>
+      <div class="monits-form-grid">
+        <label style="grid-column: span 2;">
+          <span>{{ 'Nama Sensor' if current_lang == 'id' else 'Sensor Name' }}</span>
+          <input id="newSensorName" type="text" placeholder="Rack A04 Cold Aisle Sensor" value="Rack A04 Cold Aisle" class="monits-input" />
+        </label>
+        <label>
+          <span>{{ 'Lantai' if current_lang == 'id' else 'Floor Level' }}</span>
+          <select id="newSensorFloor" class="monits-input" onchange="window.onSensorFloorChange(this.value)"></select>
+        </label>
+        <label>
+          <span>{{ 'Ruangan / Zona' if current_lang == 'id' else 'Room / Zone' }}</span>
+          <select id="newSensorRoom" class="monits-input" onchange="window.onSensorRoomChange(this.value)"></select>
+        </label>
+        <label>
+          <span>{{ 'Posisi X & Z (meter)' if current_lang == 'id' else 'Position X & Z (meters)' }}</span>
+          <div style="display:flex; gap:4px;">
+            <input id="newSensorX" type="number" step="0.2" value="3.5" class="monits-input" title="X coordinate (m)" placeholder="X (m)" />
+            <input id="newSensorZ" type="number" step="0.2" value="2.4" class="monits-input" title="Z coordinate (m)" placeholder="Z (m)" />
+          </div>
+        </label>
+        <label>
+          <span>{{ 'Tinggi Y (meter)' if current_lang == 'id' else 'Height Y (meters)' }}</span>
+          <input id="newSensorY" type="number" step="0.1" value="1.5" class="monits-input" title="Mount Height Y (m)" />
+        </label>
+        <label>
+          <span>{{ 'Suhu Awal (°C)' if current_lang == 'id' else 'Initial Temp (°C)' }}</span>
+          <input id="newSensorTemp" type="number" step="0.1" value="21.5" class="monits-input" />
+        </label>
+        <label>
+          <span>{{ 'Kelembaban Awal (%RH)' if current_lang == 'id' else 'Initial Humidity (%RH)' }}</span>
+          <input id="newSensorHum" type="number" step="0.5" value="45.0" class="monits-input" />
+        </label>
+      </div>
+      <button id="btnPlaceSensorIn3D" class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:7px;" onclick="window.handleAddAndPlaceSensor()">
+        ➕ {{ 'Tempatkan Sensor di 3D & Simpan ke Database' if current_lang == 'id' else 'Place Sensor at (X, Z, Y) in 3D & Save to DB' }}
+      </button>
+      <div id="sensorPlaceStatusMsg" style="font-size:0.74rem; color:#4ade80; margin-top:6px;"></div>
     </div>
 
+    <!-- Section 2: Direct Sensor Readings from Database -->
     <div>
       <h4 class="monits-section-title">
-        {{ '2. Data Sensor Langsung dari Database (Suhu °C / RH% / kW)' if current_lang == 'id' else '2. Direct Sensor Readings from Database (°C / RH% / kW)' }}
+        {{ '2. Nilai Sensor Aktif di Database (Suhu °C / RH% / kW)' if current_lang == 'id' else '2. Live Database Sensors (°C / RH% / kW)' }}
       </h4>
-      <div style="font-size: 0.73rem; color: #94a3b8; margin-bottom: 8px;">
-        {{ 'Ubah nilai di bawah untuk menyimpan langsung ke tabel database dan memperbarui peta panas 3D secara real-time:' if current_lang == 'id' else 'Edit values below to write directly to the database and update 3D room markers & heatmaps in real time:' }}
+      <div style="font-size: 0.72rem; color: #94a3b8; margin-bottom: 8px;">
+        {{ 'Ubah nilai di bawah untuk menyimpan langsung ke database dan memperbarui peta panas 3D secara real-time:' if current_lang == 'id' else 'Edit values below to write directly to the database and update 3D room markers & heatmaps in real time:' }}
       </div>
       <div id="dbSensorsList"></div>
+    </div>
+
+    <!-- Section 3: Virtual Room Lights -->
+    <div>
+      <h4 class="monits-section-title">
+        {{ '3. Sakelar Lampu Ruangan Virtual (Kontrol 3D Langsung)' if current_lang == 'id' else '3. Virtual Room Lights (Direct 3D Control)' }}
+      </h4>
+      <div id="virtualLightsList"></div>
     </div>
   </div>
 </aside>
@@ -318,7 +364,7 @@
   const currentLang = "{{ current_lang|default('en') }}";
   const isId = currentLang === "id";
 
-  // Ensure NextFloor fills 100% of the viewport while keeping its native integrated .nf-header visible
+  // Ensure 3D panel fills 100% of the viewport while keeping its native integrated .nf-header visible
   function styleIntegratedPanel() {
     const panel = document.getElementById("monitPanel");
     if (panel && panel.shadowRoot) {
@@ -352,9 +398,35 @@
     }
   }
 
-  window.switchUIMode = function(mode) {
+  window.saveCurrentBuildingNow = async function() {
+    if (!window.monitsApi) return false;
+    const btn = document.getElementById("monitPanel")?.shadowRoot?.getElementById("btnSavePlan");
+    if (btn) btn.textContent = isId ? "⏳ Menyimpan..." : "⏳ Saving...";
+    const ok = await window.monitsApi.saveBuildingNow();
+    if (btn) {
+      btn.textContent = ok ? (isId ? "✓ Tersimpan" : "✓ Saved") : (isId ? "⚠ Gagal" : "⚠ Error");
+      setTimeout(() => {
+        if (btn) btn.textContent = isId ? "💾 Simpan" : "💾 Save";
+      }, 1800);
+    }
+    return ok;
+  };
+
+  window.navigateWithSave = async function(targetUrl) {
+    try {
+      if (window.monitsApi) {
+        await window.monitsApi.saveBuildingNow();
+      }
+    } catch (e) {}
+    window.location.href = targetUrl;
+  };
+
+  window.switchUIMode = async function(mode) {
     const panel = document.getElementById("monitPanel");
     if (!panel) return;
+    if (panel._mode === "editor" && mode !== "editor" && window.monitsApi) {
+      await window.monitsApi.saveBuildingNow();
+    }
     panel._mode = mode;
     panel.requestUpdate();
   };
@@ -383,6 +455,82 @@
     }
   };
 
+  function computeRoomCenter(poly) {
+    if (!Array.isArray(poly) || poly.length === 0) return { x: 3.0, z: 2.5 };
+    let sx = 0, sz = 0;
+    for (const pt of poly) {
+      sx += Number(pt[0] || 0);
+      sz += Number(pt[1] || 0);
+    }
+    return {
+      x: Math.round((sx / poly.length) * 10) / 10,
+      z: Math.round((sz / poly.length) * 10) / 10
+    };
+  }
+
+  window.onSensorFloorChange = function(floorId) {
+    if (!window.monitsApi) return;
+    const b = window.monitsApi.getBuilding();
+    const fl = (b?.floors || []).find(f => f.id === floorId) || (b?.floors || [])[0];
+    const roomSelect = document.getElementById("newSensorRoom");
+    if (!roomSelect) return;
+
+    const rooms = fl?.rooms || [];
+    if (rooms.length > 0) {
+      roomSelect.innerHTML = rooms.map(r => `<option value="${r.ha_area || r.id}" data-room-id="${r.id}">${r.name || r.id}</option>`).join("");
+      window.onSensorRoomChange(roomSelect.value);
+    } else {
+      roomSelect.innerHTML = `<option value="server_alpha">${isId ? 'Area Umum Lantai' : 'General Floor Area'}</option>`;
+    }
+  };
+
+  window.onSensorRoomChange = function(areaId) {
+    if (!window.monitsApi) return;
+    const floorId = document.getElementById("newSensorFloor")?.value;
+    const b = window.monitsApi.getBuilding();
+    const fl = (b?.floors || []).find(f => f.id === floorId) || (b?.floors || [])[0];
+    const rm = (fl?.rooms || []).find(r => (r.ha_area || r.id) === areaId || r.id === areaId);
+    const pts = rm?.points || rm?.poly;
+    if (rm && Array.isArray(pts) && pts.length > 0) {
+      const c = computeRoomCenter(pts);
+      const xInput = document.getElementById("newSensorX");
+      const zInput = document.getElementById("newSensorZ");
+      if (xInput) xInput.value = c.x;
+      if (zInput) zInput.value = c.z;
+    }
+  };
+
+  window.handleAddAndPlaceSensor = async function() {
+    if (!window.monitsApi) return;
+    const name = document.getElementById("newSensorName")?.value || "Rack Sensor";
+    const floorId = document.getElementById("newSensorFloor")?.value || "ground";
+    const areaId = document.getElementById("newSensorRoom")?.value || "server_alpha";
+    const x = document.getElementById("newSensorX")?.value || 3.5;
+    const z = document.getElementById("newSensorZ")?.value || 2.4;
+    const mountY = document.getElementById("newSensorY")?.value || 1.5;
+    const temperature = document.getElementById("newSensorTemp")?.value || 21.5;
+    const humidity = document.getElementById("newSensorHum")?.value || 45.0;
+
+    const placed = await window.monitsApi.addAndPlaceSensorIn3D({
+      name,
+      floorId,
+      areaId,
+      x,
+      z,
+      mountY,
+      temperature,
+      humidity
+    });
+
+    const msgEl = document.getElementById("sensorPlaceStatusMsg");
+    if (placed && msgEl) {
+      msgEl.textContent = isId
+        ? `✓ Sensor "${placed.name}" ditempatkan di (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & tersimpan di DB!`
+        : `✓ Placed "${placed.name}" at (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & saved to DB!`;
+      renderDevicesDrawer();
+    }
+  };
+
   function rgbToHex(rgb) {
     if (!Array.isArray(rgb) || rgb.length < 3) return "#38bdf8";
     return "#" + rgb.slice(0, 3).map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
@@ -390,6 +538,19 @@
 
   function renderDevicesDrawer() {
     if (!window.monitsApi) return;
+
+    // Populate Floor & Room dropdowns dynamically from active 3D building
+    const b = window.monitsApi.getBuilding();
+    const floorSelect = document.getElementById("newSensorFloor");
+    if (floorSelect && b && Array.isArray(b.floors)) {
+      const prevFloor = floorSelect.value;
+      floorSelect.innerHTML = b.floors.map(f => `<option value="${f.id}">${f.name || f.id}</option>`).join("");
+      if (prevFloor && b.floors.some(f => f.id === prevFloor)) {
+        floorSelect.value = prevFloor;
+      }
+      window.onSensorFloorChange(floorSelect.value);
+    }
+
     const states = window.monitsApi.getStates();
     const lightsContainer = document.getElementById("virtualLightsList");
     if (lightsContainer) {
@@ -417,20 +578,25 @@
     const sensorsContainer = document.getElementById("dbSensorsList");
     const sensors = window.monitsApi.getSensors() || [];
     if (sensorsContainer) {
-      sensorsContainer.innerHTML = sensors.map(s => `
-        <div class="monits-sensor-grid">
-          <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${s.name}">
-            <strong style="color:#e2e8f0;">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
-            <div style="font-size:0.68rem; color:#38bdf8;">${s.area_id} · ${s.status.toUpperCase()}</div>
+      sensorsContainer.innerHTML = sensors.map(s => {
+        const coordsLabel = (s.placement_x !== null && s.placement_x !== undefined)
+          ? ` · (${s.placement_x}m, ${s.placement_z}m)`
+          : "";
+        return `
+          <div class="monits-sensor-grid">
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${s.name}">
+              <strong style="color:#e2e8f0;">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
+              <div style="font-size:0.68rem; color:#38bdf8;">${s.area_id}${coordsLabel}</div>
+            </div>
+            <input id="inp_t_${s.identifier}" type="number" step="0.1" class="monits-input" value="${s.current_temperature ?? 22.0}" title="Temperature (°C)" />
+            <input id="inp_h_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.current_humidity ?? 45.0}" title="Humidity (%RH)" />
+            <input id="inp_p_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.power_kw ?? 15.0}" title="Power (kW)" />
+            <button class="monits-pill-btn on" title="Save to Database" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}')">
+              💾
+            </button>
           </div>
-          <input id="inp_t_${s.identifier}" type="number" step="0.1" class="monits-input" value="${s.current_temperature ?? 22.0}" title="Temperature (°C)" />
-          <input id="inp_h_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.current_humidity ?? 45.0}" title="Humidity (%RH)" />
-          <input id="inp_p_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.power_kw ?? 15.0}" title="Power (kW)" />
-          <button class="monits-pill-btn on" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}')">
-            💾
-          </button>
-        </div>
-      `).join("");
+        `;
+      }).join("");
     }
   }
 
@@ -496,7 +662,7 @@
     renderCablesDrawer();
   };
 
-  window.handleAddCableRun = function() {
+  window.handleAddCableRun = async function() {
     if (!window.monitsApi) return;
     const cableType = document.getElementById("cableTypeSelect").value;
     const placementZone = document.getElementById("cableZoneSelect").value;
@@ -508,7 +674,7 @@
     const x2 = document.getElementById("cableX2").value;
     const z2 = document.getElementById("cableZ2").value;
 
-    const added = window.monitsApi.addCableRunToPlan({
+    const added = await window.monitsApi.addCableRunToPlan({
       cableType,
       placementZone,
       customMountY,
@@ -523,21 +689,21 @@
     const msgEl = document.getElementById("cableStatusMsg");
     if (added && msgEl) {
       msgEl.textContent = isId
-        ? `✓ Ditambahkan: ${added.name} (Elevasi Y=${added.mount_y}m)`
-        : `✓ Added to 3D & DB: ${added.name} (Elevation Y=${added.mount_y}m)`;
+        ? `✓ Ditambahkan & Disimpan: ${added.name} (Elevasi Y=${added.mount_y}m)`
+        : `✓ Added to 3D & Saved to DB: ${added.name} (Elevation Y=${added.mount_y}m)`;
     }
   };
 
-  window.startNewFloorPlan = function() {
+  window.startNewFloorPlan = async function() {
     const msg = isId
-      ? "Buat denah fasilitas 3D baru dari awal? Perubahan saat ini dapat disimpan."
-      : "Start a new 3D facility layout from scratch? Current layout can be saved first.";
+      ? "Buat denah fasilitas 3D baru dari awal? Denah baru akan langsung disimpan ke database."
+      : "Start a new 3D facility layout from scratch? The new layout will be saved to the database.";
 
     if (confirm(msg)) {
       const panel = document.getElementById("monitPanel");
       if (panel && panel.data) {
         const newFloorName = isId ? "Lantai Dasar" : "Ground Floor";
-        panel.data.edit({
+        const emptyBuilding = {
           version: 1,
           settings: { grid: 0.1, wall_exterior: 0.25, wall_interior: 0.15, roof: { type: "none" } },
           floors: [
@@ -557,8 +723,12 @@
               background: null
             }
           ]
-        });
-        window.switchUIMode("editor");
+        };
+        panel.data.edit(emptyBuilding);
+        if (window.monitsApi) {
+          await window.monitsApi.saveBuildingNow(emptyBuilding);
+        }
+        await window.switchUIMode("editor");
       }
     }
   };
@@ -582,7 +752,7 @@
         setInterval(styleIntegratedPanel, 250);
       }
     } catch (err) {
-      console.error("Failed to initialize NextFloor interface:", err);
+      console.error("Failed to initialize 3D interface:", err);
     }
   }
 

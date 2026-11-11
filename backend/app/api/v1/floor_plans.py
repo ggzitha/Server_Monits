@@ -76,7 +76,7 @@ async def list_floor_plans(
     stmt = select(FloorPlan).options(
         selectinload(FloorPlan.rooms),
         selectinload(FloorPlan.objects),
-    ).order_by(FloorPlan.site_name.asc(), FloorPlan.level_index.asc())
+    ).order_by(FloorPlan.updated_at.desc(), FloorPlan.created_at.desc())
 
     if site:
         stmt = stmt.where(FloorPlan.site_name == site)
@@ -94,6 +94,7 @@ async def list_floor_plans(
             "level_index": p.level_index,
             "grid_size_meters": p.grid_size_meters,
             "scale_ratio": p.scale_ratio,
+            "metadata_json": p.metadata_json,
             "room_count": len(p.rooms),
             "object_count": len(p.objects),
             "created_at": p.created_at,
@@ -159,6 +160,7 @@ async def get_floor_plan(plan_id: str, db: AsyncSession = Depends(get_db)):
         "grid_size_meters": plan.grid_size_meters,
         "scale_ratio": plan.scale_ratio,
         "metadata": plan.metadata_json,
+        "metadata_json": plan.metadata_json,
         "created_at": plan.created_at,
         "updated_at": plan.updated_at,
         "rooms": [

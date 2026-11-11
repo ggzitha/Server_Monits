@@ -189,17 +189,19 @@ def run_smoke_test():
                 raise RuntimeError(f"Expected 1 integrated .nf-header, found {header_count}")
             print("  ✓ Native NextFloor .nf-header is VISIBLE and fully integrated with Server_Monits controls.")
 
-            # 3. Assert NO German words
-            print(">> [3/7] Verifying language purity (No German words)...")
+            # 3. Assert NO German words & NO Home Assistant text
+            print(">> [3/8] Verifying language purity (No German words, No Home Assistant references)...")
             body_text = page.inner_text("body")
             german_words = ["Obergeschoss", "Wohnzimmer", "Erdgeschoss", "Kinderzimmer", "Küche", "Schlafzimmer"]
             found_german = [w for w in german_words if w.lower() in body_text.lower()]
             if found_german:
                 raise RuntimeError(f"Found unwanted German words in UI: {found_german}")
-            print("  ✓ Pure English / Indonesian facility model active: Zero German words.")
+            if "home assistant" in body_text.lower():
+                raise RuntimeError("Found unwanted 'Home Assistant' text in UI!")
+            print("  ✓ Pure English / Indonesian facility model active: Zero German words & Zero Home Assistant references.")
 
             # 4. Test 3D Canvas
-            print(">> [4/7] Verifying 3D WebGL Canvas...")
+            print(">> [4/8] Verifying 3D WebGL Canvas...")
             page.wait_for_function("""() => {
                 const p = document.querySelector('nextfloor-panel');
                 if (!p || !p.shadowRoot) return false;
@@ -209,10 +211,24 @@ def run_smoke_test():
             }""", timeout=15000)
             print("  ✓ NextFloor Three.js 3D canvas active and rendering.")
 
-            # 5. Test Virtual Lights & Direct DB Sensor Data Drawer
-            print(">> [5/7] Testing Virtual Lights & Direct DB Sensor Data...")
+            # 5. Test Placing New Temperature & Humidity Sensor at Specific Place + Virtual Lights
+            print(">> [5/8] Testing Adding & Placing New Temp/Humidity Sensor at Specific Place (X=4.2m, Z=3.1m, Y=1.6m)...")
             page.locator("#btnVirtualDb").click()
             page.wait_for_selector("#drawerDevices.open", timeout=5000)
+
+            page.fill("#newSensorName", "Cold Aisle Rack B09")
+            page.fill("#newSensorX", "4.2")
+            page.fill("#newSensorZ", "3.1")
+            page.fill("#newSensorY", "1.6")
+            page.fill("#newSensorTemp", "19.8")
+            page.fill("#newSensorHum", "42.5")
+            page.click("#btnPlaceSensorIn3D")
+            page.wait_for_timeout(600)
+
+            place_msg = page.inner_text("#sensorPlaceStatusMsg")
+            if "Cold Aisle Rack B09" not in place_msg:
+                raise RuntimeError(f"Expected sensor placement confirmation, got '{place_msg}'")
+            print(f"  ✓ Sensor placed at specific coordinates & saved to DB: {place_msg}")
 
             # Toggle virtual light off then on
             page.evaluate("() => window.onVirtualLightToggle('light.server_alpha_light', 'off')")
@@ -226,51 +242,69 @@ def run_smoke_test():
             light_state = page.evaluate("() => window.nfPanel.hass.states['light.server_alpha_light'].state")
             if light_state != "on":
                 raise RuntimeError(f"Expected virtual light state 'on', got '{light_state}'")
-            print("  ✓ Virtual lights toggle ON/OFF in 3D scene & persist to DB without Home Assistant.")
-
-            # Push live DB sensor reading
-            page.evaluate("""() => window.monitsApi.pushDbSensorReading({
-                identifier: 'server_alpha_env',
-                area_id: 'server_alpha',
-                temperature: 23.7,
-                humidity: 46.2,
-                power_kw: 44.5
-            })""")
-            page.wait_for_timeout(400)
-            temp_state = page.evaluate("() => window.nfPanel.hass.states['sensor.server_alpha_env_temp'].state")
-            if temp_state != "23.7":
-                raise RuntimeError(f"Expected DB sensor temp '23.7', got '{temp_state}'")
-            print("  ✓ Direct DB sensor reading saved to database & synced to 3D scene (23.7°C).")
+            print("  ✓ Virtual lights toggle ON/OFF in 3D scene & persist to DB.")
 
             # 6. Test 3D Cabling (Below Floor, In Wall, Ceiling for Power, FO, Ethernet)
-            print(">> [6/7] Testing 3D Cabling (Power, FO, Ethernet in Below Floor / Wall / Ceiling)...")
+            print(">> [6/8] Testing 3D Cabling (Power, FO, Ethernet in Below Floor / Wall / Ceiling)...")
             page.locator("#btnCablesMgr").click()
             page.wait_for_selector("#drawerCables.open", timeout=5000)
             page.click("button[onclick='handleAddCableRun()']")
-            page.wait_for_timeout(300)
+            page.wait_for_timeout(400)
             cable_msg = page.inner_text("#cableStatusMsg")
             if "Added" not in cable_msg and "Ditambahkan" not in cable_msg:
                 raise RuntimeError(f"Expected cable addition confirmation, got '{cable_msg}'")
             page.evaluate("() => window.toggleMonitsDrawer(null)")
             print(f"  ✓ 3D Cable routing verified: {cable_msg}")
 
-            # 7. Test Switching to 3D CAD Editor
-            print(">> [7/7] Testing 3D CAD Editor Mode Switch...")
+            # 7. Test 3D CAD Editor Modification + Explicit Save
+            print(">> [7/8] Testing 3D CAD Editor Modification & Explicit Save to SQLite DB...")
             page.locator("#btnEditMode").click()
             page.wait_for_timeout(1000)
 
             mode = page.evaluate("() => document.querySelector('nextfloor-panel')?._mode")
             if mode != "editor":
                 raise RuntimeError(f"Expected mode 'editor', got '{mode}'")
-            print("  ✓ Successfully switched into 3D CAD Floor Plan Editor mode.")
 
-            # Switch back to view mode
-            page.locator("#btnViewMode").click()
-            page.wait_for_timeout(500)
-            mode = page.evaluate("() => document.querySelector('nextfloor-panel')?._mode")
-            if mode != "view":
-                raise RuntimeError(f"Expected mode 'view', got '{mode}'")
-            print("  ✓ Successfully switched back to 3D Monitor mode.")
+            # Modify building in Editor (add a custom room 'Custom AI Cluster Pod') and click #btnSavePlan
+            page.evaluate("""() => {
+                const panel = document.querySelector('nextfloor-panel');
+                const b = structuredClone(panel.data.building);
+                if (!b.floors[0].rooms.some(r => r.id === 'room_ai_pod')) {
+                    b.floors[0].rooms.push({
+                        id: 'room_ai_pod',
+                        name: 'Custom AI Cluster Pod',
+                        ha_area: 'ai_cluster_pod',
+                        points: [[14, 0], [18, 0], [18, 5], [14, 5]],
+                        floor_material: 'concrete_dark',
+                        label: true
+                    });
+                }
+                panel.data.edit(b);
+            }""")
+            page.locator("#btnSavePlan").click()
+            page.wait_for_timeout(600)
+            print("  ✓ Modified 3D building in Editor and saved via 💾 Save button.")
+
+            # 8. Navigate to /admin/users, then back to /, and assert ALL modifications & placed sensors persisted!
+            print(">> [8/8] Navigating to /admin/users and back to / to verify DB persistence...")
+            page.locator("#btnNavUsers").click()
+            page.wait_for_url(f"{BASE_URL}/admin/users", timeout=8000)
+            page.goto(f"{BASE_URL}/")
+            page.wait_for_selector("nextfloor-panel", timeout=10000)
+            page.wait_for_function("() => window.monitsApi && window.nfPanel && window.nfPanel.data && window.nfPanel.data.building", timeout=10000)
+
+            persisted_check = page.evaluate("""() => {
+                const b = window.monitsApi.getBuilding();
+                const hasCustomRoom = b.floors[0].rooms.some(r => r.id === 'room_ai_pod' && r.name === 'Custom AI Cluster Pod');
+                const hasPlacedSensorPin = (b.floors[0].placements || []).some(p => p.entity_id === 'sensor.cold_aisle_rack_b09_temp' && p.x === 4.2 && p.z === 3.1);
+                const hasSensorState = window.nfPanel.hass.states['sensor.cold_aisle_rack_b09_temp']?.state === '19.8';
+                return { hasCustomRoom, hasPlacedSensorPin, hasSensorState };
+            }""")
+            if not persisted_check["hasCustomRoom"]:
+                raise RuntimeError(f"3D Editor custom room was lost after navigating to /admin/users and back! {persisted_check}")
+            if not persisted_check["hasPlacedSensorPin"] or not persisted_check["hasSensorState"]:
+                raise RuntimeError(f"Placed Temp/Humidity sensor was lost after navigating to /admin/users and back! {persisted_check}")
+            print("  ✓ 3D Editor modifications AND placed Temp/Humidity sensor persisted across /admin/users navigation!")
 
             # Verify zero external outbound requests
             if outbound_requests:

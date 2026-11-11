@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.deps import get_current_user, get_db
+from backend.app.db.models.floor_plan import FloorPlan
 from backend.app.db.models.sensor import Sensor
 from backend.app.db.models.system_config import SystemConfig
 from backend.app.db.models.telemetry import TelemetryReading
@@ -155,6 +156,10 @@ class DirectReadingInput(BaseModel):
     identifier: str = Field(..., min_length=1, max_length=100)
     name: Optional[str] = None
     area_id: Optional[str] = None
+    floor_id: Optional[str] = None
+    placement_x: Optional[float] = None
+    placement_z: Optional[float] = None
+    placement_y: Optional[float] = None
     temperature: Optional[float] = None
     humidity: Optional[float] = None
     power_kw: Optional[float] = None
@@ -166,6 +171,15 @@ class VirtualStateUpdate(BaseModel):
     entity_id: str = Field(..., min_length=1, max_length=150)
     state: str = Field(..., min_length=1, max_length=50)
     attributes: Dict[str, Any] = Field(default_factory=dict)
+
+
+class BuildingSavePayload(BaseModel):
+    building: Dict[str, Any]
+    name: Optional[str] = "Main Server Facility"
+    site: Optional[str] = "Datacenter Alpha"
+    areas: Optional[Dict[str, Any]] = None
+    snapshots: Optional[List[Dict[str, Any]]] = None
+    revision: Optional[int] = None
 
 
 @router.get("")
@@ -185,6 +199,10 @@ async def list_sensors(
                 "name": s.name,
                 "sensor_type": s.sensor_type,
                 "area_id": meta.get("area_id", "server_alpha"),
+                "floor_id": meta.get("floor_id", "ground"),
+                "placement_x": meta.get("placement_x"),
+                "placement_z": meta.get("placement_z"),
+                "placement_y": meta.get("placement_y"),
                 "current_temperature": s.current_temperature,
                 "current_humidity": s.current_humidity,
                 "power_kw": meta.get("power_kw"),
@@ -223,7 +241,7 @@ async def push_sensor_reading(
 
     result = await process_telemetry_reading(db, payload)
 
-    # Also update metadata (area_id, power_kw, wifi_dbm, custom name) on the Sensor row
+    # Also update metadata (area_id, floor_id, placement_x/z/y, power_kw, wifi_dbm, custom name) on the Sensor row
     stmt = select(Sensor).where(Sensor.identifier == data.identifier)
     sensor = (await db.execute(stmt)).scalar_one_or_none()
     if sensor:
@@ -232,6 +250,14 @@ async def push_sensor_reading(
         meta = dict(sensor.metadata_json or {})
         if data.area_id:
             meta["area_id"] = data.area_id
+        if data.floor_id:
+            meta["floor_id"] = data.floor_id
+        if data.placement_x is not None:
+            meta["placement_x"] = round(float(data.placement_x), 2)
+        if data.placement_z is not None:
+            meta["placement_z"] = round(float(data.placement_z), 2)
+        if data.placement_y is not None:
+            meta["placement_y"] = round(float(data.placement_y), 2)
         if data.power_kw is not None:
             meta["power_kw"] = round(float(data.power_kw), 2)
         if data.wifi_dbm is not None:
@@ -246,6 +272,10 @@ async def push_sensor_reading(
                 "identifier": sensor.identifier,
                 "sensor_name": sensor.name,
                 "area_id": meta.get("area_id", "server_alpha"),
+                "floor_id": meta.get("floor_id", "ground"),
+                "placement_x": meta.get("placement_x"),
+                "placement_z": meta.get("placement_z"),
+                "placement_y": meta.get("placement_y"),
                 "temperature": sensor.current_temperature,
                 "humidity": sensor.current_humidity,
                 "power_kw": meta.get("power_kw"),
@@ -257,9 +287,143 @@ async def push_sensor_reading(
 
     return {
         **result,
+        "name": sensor.name if sensor else data.name,
         "power_kw": data.power_kw,
         "wifi_dbm": data.wifi_dbm,
         "area_id": data.area_id,
+        "floor_id": data.floor_id,
+        "placement_x": data.placement_x,
+        "placement_z": data.placement_z,
+        "placement_y": data.placement_y,
+    }
+
+
+@router.delete("/{identifier}")
+async def delete_sensor_by_identifier(
+    identifier: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Remove a custom sensor by identifier from the database."""
+    stmt = select(Sensor).where((Sensor.identifier == identifier) | (Sensor.id == identifier))
+    sensor = (await db.execute(stmt)).scalar_one_or_none()
+    if not sensor:
+        raise HTTPException(status_code=404, detail="Sensor not found")
+    await db.delete(sensor)
+    await db.commit()
+    return {"status": "deleted", "identifier": identifier}
+
+
+@router.get("/building")
+async def get_saved_3d_building(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Fetch the active persisted 3D building state from the database."""
+    res = await db.execute(
+        select(SystemConfig).where(SystemConfig.key == "active_3d_building")
+    )
+    cfg = res.scalar_one_or_none()
+    if cfg and cfg.value:
+        try:
+            parsed = json.loads(cfg.value)
+            if isinstance(parsed, dict) and parsed.get("building") and isinstance(parsed["building"].get("floors"), list):
+                return {
+                    "saved": True,
+                    "building": parsed["building"],
+                    "name": parsed.get("name", "Main Server Facility"),
+                    "site": parsed.get("site", "Datacenter Alpha"),
+                    "areas": parsed.get("areas"),
+                    "snapshots": parsed.get("snapshots"),
+                    "revision": parsed.get("revision", 1),
+                    "updated_at": parsed.get("updated_at"),
+                }
+        except Exception:
+            pass
+
+    # Fallback: check most recently updated FloorPlan row if present
+    fp_res = await db.execute(
+        select(FloorPlan).order_by(FloorPlan.updated_at.desc(), FloorPlan.created_at.desc())
+    )
+    fp = fp_res.scalars().first()
+    if fp and isinstance(fp.metadata_json, dict) and isinstance(fp.metadata_json.get("floors"), list):
+        # Only use FloorPlan row if it has rooms, walls, or furniture
+        has_content = any(
+            len(f.get("rooms", [])) > 0 or len(f.get("walls", [])) > 0 or len(f.get("furniture", [])) > 0
+            for f in fp.metadata_json.get("floors", [])
+        )
+        if has_content:
+            return {
+                "saved": True,
+                "building": fp.metadata_json,
+                "name": fp.name,
+                "site": fp.site_name,
+                "areas": None,
+                "snapshots": None,
+                "revision": 1,
+                "updated_at": fp.updated_at.isoformat() if fp.updated_at else None,
+            }
+
+    return {"saved": False, "building": None}
+
+
+@router.post("/building")
+async def save_3d_building(
+    payload: BuildingSavePayload,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Persist the active 3D building layout into both SystemConfig and FloorPlan tables."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    record = {
+        "building": payload.building,
+        "name": payload.name or "Main Server Facility",
+        "site": payload.site or "Datacenter Alpha",
+        "areas": payload.areas,
+        "snapshots": payload.snapshots,
+        "revision": payload.revision or 1,
+        "updated_at": now_iso,
+    }
+
+    res = await db.execute(
+        select(SystemConfig).where(SystemConfig.key == "active_3d_building")
+    )
+    cfg = res.scalar_one_or_none()
+    if not cfg:
+        cfg = SystemConfig(
+            key="active_3d_building",
+            value=json.dumps(record),
+        )
+        db.add(cfg)
+    else:
+        cfg.value = json.dumps(record)
+
+    # Also keep primary FloorPlan row synchronized
+    fp_res = await db.execute(
+        select(FloorPlan).order_by(FloorPlan.updated_at.desc(), FloorPlan.created_at.desc())
+    )
+    fp = fp_res.scalars().first()
+    if fp:
+        fp.name = payload.name or fp.name
+        fp.site_name = payload.site or fp.site_name
+        fp.metadata_json = payload.building
+    else:
+        fp = FloorPlan(
+            name=payload.name or "Main Server Facility",
+            site_name=payload.site or "Datacenter Alpha",
+            level_index=0,
+            grid_size_meters=0.5,
+            scale_ratio=1.0,
+            metadata_json=payload.building,
+        )
+        db.add(fp)
+
+    await db.commit()
+    return {
+        "status": "saved",
+        "revision": record["revision"],
+        "updated_at": now_iso,
+        "plan_id": fp.id,
     }
 
 

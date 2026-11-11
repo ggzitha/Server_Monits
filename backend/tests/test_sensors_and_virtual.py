@@ -78,3 +78,59 @@ async def test_db_sensors_and_virtual_states(client, db_session):
     assert v_get.status_code == 200
     states = v_get.json()["states"]
     assert states["light.server_alpha_light"]["state"] == "off"
+
+    # 5. Place new sensor at specific 3D coordinates (x, z, y) and verify persistence
+    place_res = await client.post(
+        "/api/v1/sensors/readings",
+        headers=admin_headers,
+        json={
+            "identifier": "cold_aisle_b09",
+            "name": "Cold Aisle Rack B09",
+            "area_id": "server_alpha",
+            "floor_id": "ground",
+            "placement_x": 4.2,
+            "placement_z": 3.1,
+            "placement_y": 1.6,
+            "temperature": 19.8,
+            "humidity": 42.5,
+        },
+    )
+    assert place_res.status_code == 200
+    list_res2 = await client.get("/api/v1/sensors", headers=admin_headers)
+    placed_sensor = next(s for s in list_res2.json() if s["identifier"] == "cold_aisle_b09")
+    assert placed_sensor["placement_x"] == 4.2
+    assert placed_sensor["placement_z"] == 3.1
+    assert placed_sensor["placement_y"] == 1.6
+    assert placed_sensor["current_temperature"] == 19.8
+    assert placed_sensor["current_humidity"] == 42.5
+
+    # 6. Save and load active 3D building state (/api/v1/sensors/building)
+    sample_building = {
+        "version": 1,
+        "settings": {"grid": 0.1},
+        "floors": [
+            {
+                "id": "ground",
+                "name": "Ground Floor",
+                "rooms": [{"id": "r1", "name": "Server Room Alpha", "points": [[0, 0], [8, 0], [8, 6], [0, 6]]}],
+                "walls": [],
+                "furniture": [],
+                "placements": [{"entity_id": "sensor.cold_aisle_b09_temp", "x": 4.2, "z": 3.1}],
+            }
+        ],
+    }
+    b_post = await client.post(
+        "/api/v1/sensors/building",
+        headers=admin_headers,
+        json={"building": sample_building, "name": "Test Datacenter", "revision": 5},
+    )
+    assert b_post.status_code == 200
+    assert b_post.json()["status"] == "saved"
+
+    b_get = await client.get("/api/v1/sensors/building", headers=admin_headers)
+    assert b_get.status_code == 200
+    b_data = b_get.json()
+    assert b_data["saved"] is True
+    assert b_data["name"] == "Test Datacenter"
+    assert b_data["building"]["floors"][0]["rooms"][0]["name"] == "Server Room Alpha"
+
