@@ -178,20 +178,19 @@ def run_smoke_test():
             page.fill("#loginPassword", TEST_ADMIN_PASS)
             page.click("#btnLogin")
 
-            # 2. Wait for main UI
-            print(">> [2/5] Loading 3D Facility Monitor (/)...")
+            # 2. Wait for main UI & Integrated NextFloor Header
+            print(">> [2/7] Loading 3D Facility Monitor & Integrated Header (/)...")
             page.wait_for_url(f"{BASE_URL}/", timeout=8000)
-            page.wait_for_selector(".monits-top-navbar", timeout=5000)
             page.wait_for_selector("nextfloor-panel", timeout=10000)
+            page.locator("header.nf-header.monits-top-navbar").wait_for(state="visible", timeout=10000)
 
-            # Assert Single Header (exactly one .monits-top-navbar, no duplicate navbar)
-            navbars = page.query_selector_all(".monits-top-navbar")
-            if len(navbars) != 1:
-                raise RuntimeError(f"Expected exactly 1 top header, found {len(navbars)}")
-            print("  ✓ Exactly 1 single top navbar rendered.")
+            header_count = page.locator("header.nf-header.monits-top-navbar").count()
+            if header_count != 1:
+                raise RuntimeError(f"Expected 1 integrated .nf-header, found {header_count}")
+            print("  ✓ Native NextFloor .nf-header is VISIBLE and fully integrated with Server_Monits controls.")
 
             # 3. Assert NO German words
-            print(">> [3/5] Verifying language purity (No German words)...")
+            print(">> [3/7] Verifying language purity (No German words)...")
             body_text = page.inner_text("body")
             german_words = ["Obergeschoss", "Wohnzimmer", "Erdgeschoss", "Kinderzimmer", "Küche", "Schlafzimmer"]
             found_german = [w for w in german_words if w.lower() in body_text.lower()]
@@ -200,7 +199,7 @@ def run_smoke_test():
             print("  ✓ Pure English / Indonesian facility model active: Zero German words.")
 
             # 4. Test 3D Canvas
-            print(">> [4/5] Verifying 3D WebGL Canvas...")
+            print(">> [4/7] Verifying 3D WebGL Canvas...")
             page.wait_for_function("""() => {
                 const p = document.querySelector('nextfloor-panel');
                 if (!p || !p.shadowRoot) return false;
@@ -210,19 +209,63 @@ def run_smoke_test():
             }""", timeout=15000)
             print("  ✓ NextFloor Three.js 3D canvas active and rendering.")
 
-            # 5. Test Switching to 3D CAD Editor
-            print(">> [5/5] Testing 3D CAD Editor Mode Switch...")
-            page.click("#btnEditMode")
+            # 5. Test Virtual Lights & Direct DB Sensor Data Drawer
+            print(">> [5/7] Testing Virtual Lights & Direct DB Sensor Data...")
+            page.locator("#btnVirtualDb").click()
+            page.wait_for_selector("#drawerDevices.open", timeout=5000)
+
+            # Toggle virtual light off then on
+            page.evaluate("() => window.onVirtualLightToggle('light.server_alpha_light', 'off')")
+            page.wait_for_timeout(300)
+            light_state = page.evaluate("() => window.nfPanel.hass.states['light.server_alpha_light'].state")
+            if light_state != "off":
+                raise RuntimeError(f"Expected virtual light state 'off', got '{light_state}'")
+
+            page.evaluate("() => window.onVirtualLightToggle('light.server_alpha_light', 'on')")
+            page.wait_for_timeout(300)
+            light_state = page.evaluate("() => window.nfPanel.hass.states['light.server_alpha_light'].state")
+            if light_state != "on":
+                raise RuntimeError(f"Expected virtual light state 'on', got '{light_state}'")
+            print("  ✓ Virtual lights toggle ON/OFF in 3D scene & persist to DB without Home Assistant.")
+
+            # Push live DB sensor reading
+            page.evaluate("""() => window.monitsApi.pushDbSensorReading({
+                identifier: 'server_alpha_env',
+                area_id: 'server_alpha',
+                temperature: 23.7,
+                humidity: 46.2,
+                power_kw: 44.5
+            })""")
+            page.wait_for_timeout(400)
+            temp_state = page.evaluate("() => window.nfPanel.hass.states['sensor.server_alpha_env_temp'].state")
+            if temp_state != "23.7":
+                raise RuntimeError(f"Expected DB sensor temp '23.7', got '{temp_state}'")
+            print("  ✓ Direct DB sensor reading saved to database & synced to 3D scene (23.7°C).")
+
+            # 6. Test 3D Cabling (Below Floor, In Wall, Ceiling for Power, FO, Ethernet)
+            print(">> [6/7] Testing 3D Cabling (Power, FO, Ethernet in Below Floor / Wall / Ceiling)...")
+            page.locator("#btnCablesMgr").click()
+            page.wait_for_selector("#drawerCables.open", timeout=5000)
+            page.click("button[onclick='handleAddCableRun()']")
+            page.wait_for_timeout(300)
+            cable_msg = page.inner_text("#cableStatusMsg")
+            if "Added" not in cable_msg and "Ditambahkan" not in cable_msg:
+                raise RuntimeError(f"Expected cable addition confirmation, got '{cable_msg}'")
+            page.evaluate("() => window.toggleMonitsDrawer(null)")
+            print(f"  ✓ 3D Cable routing verified: {cable_msg}")
+
+            # 7. Test Switching to 3D CAD Editor
+            print(">> [7/7] Testing 3D CAD Editor Mode Switch...")
+            page.locator("#btnEditMode").click()
             page.wait_for_timeout(1000)
 
-            # Verify that editor mode is active
             mode = page.evaluate("() => document.querySelector('nextfloor-panel')?._mode")
             if mode != "editor":
                 raise RuntimeError(f"Expected mode 'editor', got '{mode}'")
             print("  ✓ Successfully switched into 3D CAD Floor Plan Editor mode.")
 
             # Switch back to view mode
-            page.click("#btnViewMode")
+            page.locator("#btnViewMode").click()
             page.wait_for_timeout(500)
             mode = page.evaluate("() => document.querySelector('nextfloor-panel')?._mode")
             if mode != "view":

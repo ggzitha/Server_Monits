@@ -32,7 +32,7 @@ def mask_config(config: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 class DataSourceCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
-    source_type: str = Field(..., regex="^(mqtt|http_poll|webhook|manual_csv)$")
+    source_type: str = Field(..., pattern="^(mqtt|http_poll|webhook|manual_csv)$")
     config: Dict[str, Any] = Field(default_factory=dict)
     is_active: bool = True
 
@@ -44,7 +44,7 @@ class DataSourceUpdate(BaseModel):
 
 
 class DataSourceTestDraft(BaseModel):
-    source_type: str = Field(..., regex="^(mqtt|http_poll|webhook|manual_csv)$")
+    source_type: str = Field(..., pattern="^(mqtt|http_poll|webhook|manual_csv)$")
     config: Dict[str, Any] = Field(default_factory=dict)
 
 

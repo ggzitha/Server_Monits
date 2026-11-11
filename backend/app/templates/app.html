@@ -28,126 +28,12 @@
     overflow: hidden !important;
     display: flex;
     flex-direction: column;
-  }
-
-  /* Single Unified Header - Crisp Edge-to-Edge Alignment */
-  .monits-top-navbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    height: 52px;
-    min-height: 52px;
-    padding: 0 1.25rem;
-    background: rgba(14, 21, 38, 0.98);
-    backdrop-filter: blur(12px);
-    border-bottom: 1px solid rgba(0, 240, 255, 0.25);
-    box-shadow: 0 2px 16px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-  }
-
-  .monits-brand-zone {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-  }
-
-  .monits-brand-title {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #00f0ff;
-    letter-spacing: -0.01em;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .monits-mode-switcher {
-    display: flex;
-    align-items: center;
-    background: rgba(7, 11, 20, 0.75);
-    border: 1px solid rgba(120, 170, 255, 0.2);
-    border-radius: 999px;
-    padding: 3px;
-    margin-left: 1rem;
-    gap: 3px;
-  }
-
-  .monits-mode-btn {
-    border: none;
-    background: transparent;
-    color: #9cb3d9;
-    padding: 5px 14px;
-    border-radius: 999px;
-    font-size: 0.82rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .monits-mode-btn:hover {
-    color: #ffffff;
-    background: rgba(255, 255, 255, 0.08);
-  }
-
-  .monits-mode-btn.active {
-    background: #00f0ff;
-    color: #06101c;
-    box-shadow: 0 0 12px rgba(0, 240, 255, 0.4);
-  }
-
-  .monits-new-btn {
-    border: 1px solid rgba(0, 240, 255, 0.4);
-    background: rgba(0, 240, 255, 0.1);
-    color: #00f0ff;
-    padding: 5px 12px;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    margin-left: 0.5rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    transition: all 0.2s ease;
-  }
-
-  .monits-new-btn:hover {
-    background: rgba(0, 240, 255, 0.25);
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.3);
-  }
-
-  .monits-nav-actions {
-    display: flex;
-    align-items: center;
-    gap: 0.85rem;
-  }
-
-  .monits-nav-link {
-    color: #9cb3d9;
-    font-size: 0.85rem;
-    font-weight: 500;
-    text-decoration: none;
-    padding: 4px 8px;
-    border-radius: 6px;
-    transition: all 0.15s ease;
-  }
-
-  .monits-nav-link:hover {
-    color: #00f0ff;
-    background: rgba(0, 240, 255, 0.08);
-  }
-
-  .monits-divider {
-    width: 1px;
-    height: 18px;
-    background: rgba(120, 170, 255, 0.25);
+    position: relative;
   }
 
   .monits-viewport-container {
     width: 100%;
+    height: 100%;
     flex: 1;
     min-height: 0;
     overflow: hidden;
@@ -161,6 +47,152 @@
     display: flex;
     flex-direction: column;
   }
+
+  /* Slide-Over Integrated Control Drawers (Virtual Lights, DB Sensors & 3D Cabling) */
+  .monits-drawer {
+    position: fixed;
+    top: 56px;
+    right: 16px;
+    width: 430px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 76px);
+    background: rgba(13, 19, 34, 0.96);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(0, 240, 255, 0.35);
+    border-radius: 14px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75);
+    z-index: 2500;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+    color: #e2e8f0;
+  }
+
+  .monits-drawer.open {
+    display: flex;
+  }
+
+  .monits-drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(6, 11, 22, 0.85);
+    border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+  }
+
+  .monits-drawer-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #00f0ff;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .monits-drawer-close {
+    background: transparent;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #94a3b8;
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+    font-size: 0.9rem;
+  }
+
+  .monits-drawer-close:hover {
+    color: #ffffff;
+    border-color: #00f0ff;
+  }
+
+  .monits-drawer-body {
+    padding: 14px 16px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .monits-section-title {
+    font-size: 0.76rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #38bdf8;
+    margin: 0 0 8px 0;
+    border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+    padding-bottom: 4px;
+  }
+
+  .monits-card-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 10px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 0.82rem;
+  }
+
+  .monits-pill-btn {
+    border: 1px solid rgba(0, 240, 255, 0.35);
+    background: rgba(0, 240, 255, 0.12);
+    color: #00f0ff;
+    padding: 5px 11px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  .monits-pill-btn.on {
+    background: #00f0ff;
+    color: #05101c;
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.45);
+  }
+
+  .monits-sensor-grid {
+    display: grid;
+    grid-template-columns: 1fr 68px 68px 64px auto;
+    gap: 6px;
+    align-items: center;
+    padding: 7px 8px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 8px;
+    margin-bottom: 6px;
+    font-size: 0.78rem;
+  }
+
+  .monits-input {
+    background: #070b14;
+    border: 1px solid rgba(148, 163, 184, 0.3);
+    color: #f8fafc;
+    border-radius: 6px;
+    padding: 4px 6px;
+    font-size: 0.78rem;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .monits-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    font-size: 0.8rem;
+  }
+
+  .monits-form-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    color: #94a3b8;
+  }
 </style>
 <script src="/static/nextfloor/basic-types.js"></script>
 <script src="/static/nextfloor/pack-ids.js"></script>
@@ -168,119 +200,336 @@
 {% endblock %}
 
 {% block content %}
-<!-- Single Unified Application Header -->
-<header class="monits-top-navbar">
-  <div class="monits-brand-zone">
-    <div class="monits-brand-title">
-      <span>Server_Monits</span>
-      <span style="font-size: 0.7rem; padding: 2px 6px; background: rgba(0, 240, 255, 0.15); border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 4px; color: #00f0ff;">
-        {{ '3D Fasilitas' if current_lang == 'id' else '3D Facility' }}
-      </span>
-    </div>
-
-    <!-- Mode Selector: 3D Monitor vs 3D CAD Editor -->
-    <div class="monits-mode-switcher">
-      <button id="btnViewMode" class="monits-mode-btn active" onclick="switchUIMode('view')">
-        <span>👁️</span>
-        <span>{{ 'Pantau 3D' if current_lang == 'id' else '3D Monitor' }}</span>
-      </button>
-      <button id="btnEditMode" class="monits-mode-btn" onclick="switchUIMode('editor')">
-        <span>✏️</span>
-        <span>{{ 'Editor Denah 3D' if current_lang == 'id' else '3D CAD Editor' }}</span>
-      </button>
-    </div>
-
-    <!-- New Floor Plan Design Action -->
-    <button class="monits-new-btn" onclick="startNewFloorPlan()" title="{{ 'Buat denah 3D fasilitas baru dari nol' if current_lang == 'id' else 'Create a brand new 3D facility floor plan from scratch' }}">
-      <span>➕</span>
-      <span>{{ 'Desain Baru' if current_lang == 'id' else 'New Design' }}</span>
-    </button>
-  </div>
-
-  <div class="monits-nav-actions">
-    <a href="/admin/users" class="monits-nav-link">{{ 'Pengguna' if current_lang == 'id' else 'Users' }}</a>
-    <a href="/admin/settings" class="monits-nav-link">{{ 'Pengaturan' if current_lang == 'id' else 'Settings' }}</a>
-    <a href="/admin/audit" class="monits-nav-link">{{ 'Audit' if current_lang == 'id' else 'Audit' }}</a>
-
-    <div class="monits-divider"></div>
-
-    <!-- Strict EN / ID Language Selector -->
-    <select id="langSwitcher" class="form-control" style="width: auto; padding: 0.25rem 0.5rem; font-size: 0.8rem; background: rgba(7, 11, 20, 0.8); color: #00f0ff; border: 1px solid rgba(0, 240, 255, 0.3); border-radius: 6px;" onchange="switchLanguage(this.value)">
-      <option value="en" {% if current_lang == 'en' %}selected{% endif %}>English (EN)</option>
-      <option value="id" {% if current_lang == 'id' %}selected{% endif %}>Bahasa Indonesia (ID)</option>
-    </select>
-
-    <div class="monits-divider"></div>
-
-    {% if current_user %}
-    <span style="font-size: 0.85rem; color: #9cb3d9;">{{ current_user.username }}</span>
-    <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.6rem; font-size: 0.8rem;" onclick="handleLogout()">
-      {{ 'Keluar' if current_lang == 'id' else 'Logout' }}
-    </button>
-    {% else %}
-    <a href="/login" class="btn btn-primary btn-sm">{{ 'Masuk' if current_lang == 'id' else 'Login' }}</a>
-    {% endif %}
-  </div>
-</header>
-
-<!-- Main Viewport Area -->
+<!-- Main Viewport Area (Single Integrated NextFloor Header + 3D Stage + CAD Editor) -->
 <div class="monits-viewport-container">
   <nextfloor-panel id="monitPanel"></nextfloor-panel>
 </div>
+
+<!-- Drawer 1: Virtual Lights & Direct Database Sensor Control Panel -->
+<aside id="drawerDevices" class="monits-drawer" aria-label="Virtual Lights & Database Sensors">
+  <div class="monits-drawer-header">
+    <div class="monits-drawer-title">
+      <span>💡</span>
+      <span>{{ 'Kontrol Lampu Virtual & Data Sensor DB' if current_lang == 'id' else 'Virtual Lights & Direct DB Sensors' }}</span>
+    </div>
+    <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
+  </div>
+  <div class="monits-drawer-body">
+    <div>
+      <h4 class="monits-section-title">
+        {{ '1. Sakelar Lampu Ruangan Virtual (Tanpa Home Assistant)' if current_lang == 'id' else '1. Virtual Room Lights (Detached from Home Assistant)' }}
+      </h4>
+      <div id="virtualLightsList"></div>
+    </div>
+
+    <div>
+      <h4 class="monits-section-title">
+        {{ '2. Data Sensor Langsung dari Database (Suhu °C / RH% / kW)' if current_lang == 'id' else '2. Direct Sensor Readings from Database (°C / RH% / kW)' }}
+      </h4>
+      <div style="font-size: 0.73rem; color: #94a3b8; margin-bottom: 8px;">
+        {{ 'Ubah nilai di bawah untuk menyimpan langsung ke tabel database dan memperbarui peta panas 3D secara real-time:' if current_lang == 'id' else 'Edit values below to write directly to the database and update 3D room markers & heatmaps in real time:' }}
+      </div>
+      <div id="dbSensorsList"></div>
+    </div>
+  </div>
+</aside>
+
+<!-- Drawer 2: 3D Cabling (Below Floor, Wall, Ceiling) & Layer Manager -->
+<aside id="drawerCables" class="monits-drawer" aria-label="3D Cabling & Layer Manager">
+  <div class="monits-drawer-header">
+    <div class="monits-drawer-title">
+      <span>🔌</span>
+      <span>{{ 'Manajer Jalur Kabel 3D (Bawah Lantai / Dinding / Plafon)' if current_lang == 'id' else '3D Cabling (Below Floor / Wall / Ceiling)' }}</span>
+    </div>
+    <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
+  </div>
+  <div class="monits-drawer-body">
+    <div>
+      <h4 class="monits-section-title">
+        {{ '1. Visibilitas Layer Kabel di 3D' if current_lang == 'id' else '1. 3D Cable Layer Visibility Toggles' }}
+      </h4>
+      <div id="cableLayersList"></div>
+    </div>
+
+    <div>
+      <h4 class="monits-section-title">
+        {{ '2. Tambah Jalur Kabel Baru ke Denah 3D' if current_lang == 'id' else '2. Place New Cable Run in 3D Floor Plan' }}
+      </h4>
+      <div class="monits-form-grid">
+        <label>
+          <span>{{ 'Jenis Kabel' if current_lang == 'id' else 'Cable Type' }}</span>
+          <select id="cableTypeSelect" class="monits-input">
+            <option value="power">⚡ {{ 'Kabel Listrik / Power' if current_lang == 'id' else 'Electric / Power Cable' }}</option>
+            <option value="fiber">💎 {{ 'Kabel Fiber Optik (FO)' if current_lang == 'id' else 'Fiber Optic (FO) Cable' }}</option>
+            <option value="ethernet">🌐 {{ 'Kabel Ethernet (LAN Cat6A)' if current_lang == 'id' else 'Ethernet (LAN Cat6A) Cable' }}</option>
+            <option value="tray">🪜 {{ 'Tray Kabel / Ladder Frame' if current_lang == 'id' else 'Cable Tray / Ladder Frame' }}</option>
+          </select>
+        </label>
+        <label>
+          <span>{{ 'Posisi / Elevasi Jalur' if current_lang == 'id' else 'Routing Placement Zone' }}</span>
+          <select id="cableZoneSelect" class="monits-input" onchange="onCableZoneChange(this.value)">
+            <option value="below_floor">{{ 'Bawah Lantai (-0.22 m)' if current_lang == 'id' else 'Below Floor / Subfloor (-0.22 m)' }}</option>
+            <option value="wall">{{ 'Di Dinding (+1.25 m)' if current_lang == 'id' else 'In Wall / Conduit (+1.25 m)' }}</option>
+            <option value="ceiling">{{ 'Plafon / Tray Atas (+2.88 m)' if current_lang == 'id' else 'Ceiling / Overhead (+2.88 m)' }}</option>
+            <option value="custom">{{ 'Tinggi Kustom (m)' if current_lang == 'id' else 'Custom Height (m)' }}</option>
+          </select>
+        </label>
+        <label id="customMountWrap" style="display:none;">
+          <span>{{ 'Elevasi Y (meter)' if current_lang == 'id' else 'Elevation Y (meters)' }}</span>
+          <input id="cableCustomY" type="number" step="0.05" value="-0.25" class="monits-input" />
+        </label>
+        <label>
+          <span>{{ 'Lantai' if current_lang == 'id' else 'Floor Level' }}</span>
+          <select id="cableFloorSelect" class="monits-input">
+            <option value="ground">{{ 'Lantai Dasar' if current_lang == 'id' else 'Ground Floor' }}</option>
+            <option value="first">{{ 'Lantai 1' if current_lang == 'id' else 'First Floor' }}</option>
+          </select>
+        </label>
+        <label>
+          <span>{{ 'Nama / Label Jalur' if current_lang == 'id' else 'Cable Label' }}</span>
+          <input id="cableLabelInput" type="text" placeholder="FO Trunk A-B" class="monits-input" />
+        </label>
+        <label>
+          <span>{{ 'Titik Awal (X1, Z1 m)' if current_lang == 'id' else 'Start Point (X1, Z1 m)' }}</span>
+          <div style="display:flex; gap:4px;">
+            <input id="cableX1" type="number" step="0.2" value="2.2" class="monits-input" />
+            <input id="cableZ1" type="number" step="0.2" value="2.2" class="monits-input" />
+          </div>
+        </label>
+        <label>
+          <span>{{ 'Titik Akhir (X2, Z2 m)' if current_lang == 'id' else 'End Point (X2, Z2 m)' }}</span>
+          <div style="display:flex; gap:4px;">
+            <input id="cableX2" type="number" step="0.2" value="9.0" class="monits-input" />
+            <input id="cableZ2" type="number" step="0.2" value="5.2" class="monits-input" />
+          </div>
+        </label>
+      </div>
+      <button class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:8px;" onclick="handleAddCableRun()">
+        ➕ {{ 'Tambahkan Jalur Kabel ke 3D & Simpan DB' if current_lang == 'id' else 'Add Cable Run to 3D Scene & Save to DB' }}
+      </button>
+      <div id="cableStatusMsg" style="font-size:0.75rem; color:#4ade80; margin-top:6px;"></div>
+    </div>
+  </div>
+</aside>
 
 <script type="module">
   import { createNextFloorHass } from "/static/js/nextfloor_adapter.js";
 
   const currentLang = "{{ current_lang|default('en') }}";
+  const isId = currentLang === "id";
 
-  // Ensure NextFloor fills the exact viewport with clean edge-to-edge alignment
-  function hideDuplicateHeader() {
+  // Ensure NextFloor fills 100% of the viewport while keeping its native integrated .nf-header visible
+  function styleIntegratedPanel() {
     const panel = document.getElementById("monitPanel");
     if (panel && panel.shadowRoot) {
-      if (!panel.shadowRoot.getElementById("monits-header-cleaner")) {
+      if (!panel.shadowRoot.getElementById("monits-integrated-layout")) {
         const style = document.createElement("style");
-        style.id = "monits-header-cleaner";
+        style.id = "monits-integrated-layout";
         style.textContent = `
           :host {
-            height: 100% !important;
-            max-height: 100% !important;
+            height: 100vh !important;
+            max-height: 100vh !important;
             display: flex !important;
             flex-direction: column !important;
           }
-          .nf-header { display: none !important; }
-          .nf-body { flex: 1 !important; min-height: 0 !important; height: 100% !important; }
+          .nf-header {
+            display: flex !important;
+            align-items: center !important;
+            gap: 8px !important;
+            padding: 8px 14px !important;
+            flex-wrap: wrap !important;
+            background: rgba(14, 21, 38, 0.96) !important;
+            border-bottom: 1px solid rgba(0, 240, 255, 0.25) !important;
+          }
+          .nf-body {
+            flex: 1 !important;
+            min-height: 0 !important;
+            height: 100% !important;
+          }
         `;
         panel.shadowRoot.appendChild(style);
       }
     }
   }
 
-  // Switch between 3D Monitor (view) and 3D CAD Editor (editor)
   window.switchUIMode = function(mode) {
     const panel = document.getElementById("monitPanel");
     if (!panel) return;
-
     panel._mode = mode;
     panel.requestUpdate();
-
-    const btnView = document.getElementById("btnViewMode");
-    const btnEdit = document.getElementById("btnEditMode");
-
-    if (mode === "editor") {
-      btnView.classList.remove("active");
-      btnEdit.classList.add("active");
-    } else {
-      btnEdit.classList.remove("active");
-      btnView.classList.add("active");
-    }
-
-    setTimeout(hideDuplicateHeader, 50);
   };
 
-  // Start a fresh, clean 3D facility design from scratch
+  window.onCableZoneChange = function(val) {
+    const wrap = document.getElementById("customMountWrap");
+    if (wrap) wrap.style.display = val === "custom" ? "flex" : "none";
+  };
+
+  window.toggleMonitsDrawer = function(which) {
+    const dev = document.getElementById("drawerDevices");
+    const cab = document.getElementById("drawerCables");
+    if (which === "devices") {
+      const opening = !dev.classList.contains("open");
+      dev.classList.toggle("open", opening);
+      cab.classList.remove("open");
+      if (opening) renderDevicesDrawer();
+    } else if (which === "cables") {
+      const opening = !cab.classList.contains("open");
+      cab.classList.toggle("open", opening);
+      dev.classList.remove("open");
+      if (opening) renderCablesDrawer();
+    } else {
+      dev.classList.remove("open");
+      cab.classList.remove("open");
+    }
+  };
+
+  function rgbToHex(rgb) {
+    if (!Array.isArray(rgb) || rgb.length < 3) return "#38bdf8";
+    return "#" + rgb.slice(0, 3).map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
+  }
+
+  function renderDevicesDrawer() {
+    if (!window.monitsApi) return;
+    const states = window.monitsApi.getStates();
+    const lightsContainer = document.getElementById("virtualLightsList");
+    if (lightsContainer) {
+      const lightIds = Object.keys(states).filter(k => k.startsWith("light.") || k.startsWith("switch."));
+      lightsContainer.innerHTML = lightIds.map(id => {
+        const st = states[id];
+        const isOn = st.state === "on";
+        const name = st.attributes?.friendly_name || id;
+        const isLight = id.startsWith("light.");
+        const hex = rgbToHex(st.attributes?.rgb_color);
+        return `
+          <div class="monits-card-row">
+            <span style="font-weight:600; color:${isOn ? '#f8fafc' : '#94a3b8'};">${name}</span>
+            <div style="display:flex; align-items:center; gap:6px;">
+              ${isLight ? `<input type="color" value="${hex}" title="Light RGB Color" style="width:26px; height:24px; border:none; background:none; cursor:pointer;" onchange="window.onVirtualLightColor('${id}', this.value)" />` : ""}
+              <button class="monits-pill-btn ${isOn ? 'on' : ''}" onclick="window.onVirtualLightToggle('${id}', '${isOn ? 'off' : 'on'}')">
+                ${isOn ? 'ON' : 'OFF'}
+              </button>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    const sensorsContainer = document.getElementById("dbSensorsList");
+    const sensors = window.monitsApi.getSensors() || [];
+    if (sensorsContainer) {
+      sensorsContainer.innerHTML = sensors.map(s => `
+        <div class="monits-sensor-grid">
+          <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${s.name}">
+            <strong style="color:#e2e8f0;">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
+            <div style="font-size:0.68rem; color:#38bdf8;">${s.area_id} · ${s.status.toUpperCase()}</div>
+          </div>
+          <input id="inp_t_${s.identifier}" type="number" step="0.1" class="monits-input" value="${s.current_temperature ?? 22.0}" title="Temperature (°C)" />
+          <input id="inp_h_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.current_humidity ?? 45.0}" title="Humidity (%RH)" />
+          <input id="inp_p_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.power_kw ?? 15.0}" title="Power (kW)" />
+          <button class="monits-pill-btn on" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}')">
+            💾
+          </button>
+        </div>
+      `).join("");
+    }
+  }
+
+  window.onVirtualLightToggle = async function(entityId, targetState) {
+    if (!window.monitsApi) return;
+    if (entityId.startsWith("light.")) {
+      await window.monitsApi.setVirtualLight(entityId, { state: targetState });
+    } else {
+      await window.nfPanel?.hass?.callService("switch", targetState === "on" ? "turn_on" : "turn_off", { entity_id: entityId });
+    }
+    renderDevicesDrawer();
+  };
+
+  window.onVirtualLightColor = async function(entityId, hexColor) {
+    if (!window.monitsApi) return;
+    await window.monitsApi.setVirtualLight(entityId, { state: "on", hexColor });
+    renderDevicesDrawer();
+  };
+
+  window.onSaveDbSensor = async function(identifier, areaId) {
+    if (!window.monitsApi) return;
+    const t = document.getElementById(`inp_t_${identifier}`)?.value;
+    const h = document.getElementById(`inp_h_${identifier}`)?.value;
+    const p = document.getElementById(`inp_p_${identifier}`)?.value;
+    await window.monitsApi.pushDbSensorReading({
+      identifier,
+      area_id: areaId,
+      temperature: t,
+      humidity: h,
+      power_kw: p
+    });
+    renderDevicesDrawer();
+  };
+
+  function renderCablesDrawer() {
+    if (!window.monitsApi) return;
+    const states = window.monitsApi.getStates();
+    const layers = [
+      { id: "input_boolean.layer_cable_power", label: isId ? "⚡ Kabel Listrik / Power (Bawah Lantai / Dinding / Plafon)" : "⚡ Electric / Power Cables (Below Floor / Wall / Ceiling)" },
+      { id: "input_boolean.layer_cable_fiber", label: isId ? "💎 Kabel Fiber Optik / FO (OM4 / OS2)" : "💎 Fiber Optic (FO) Cables (OM4 / OS2)" },
+      { id: "input_boolean.layer_cable_ethernet", label: isId ? "🌐 Kabel Ethernet / LAN (Cat6A)" : "🌐 Ethernet / LAN Cables (Cat6A)" },
+      { id: "input_boolean.layer_cable_tray", label: isId ? "🪜 Tray Kabel & Ladder Frame" : "🪜 Cable Trays & Ladder Frames" }
+    ];
+    const container = document.getElementById("cableLayersList");
+    if (container) {
+      container.innerHTML = layers.map(l => {
+        const isOn = (states[l.id]?.state ?? "on") === "on";
+        return `
+          <div class="monits-card-row">
+            <span>${l.label}</span>
+            <button class="monits-pill-btn ${isOn ? 'on' : ''}" onclick="window.onToggleCableLayer('${l.id}')">
+              ${isOn ? (isId ? 'TAMPIL' : 'VISIBLE') : (isId ? 'SEMBUNYI' : 'HIDDEN')}
+            </button>
+          </div>
+        `;
+      }).join("");
+    }
+  }
+
+  window.onToggleCableLayer = async function(layerId) {
+    if (!window.monitsApi) return;
+    await window.monitsApi.toggleLayer(layerId);
+    renderCablesDrawer();
+  };
+
+  window.handleAddCableRun = function() {
+    if (!window.monitsApi) return;
+    const cableType = document.getElementById("cableTypeSelect").value;
+    const placementZone = document.getElementById("cableZoneSelect").value;
+    const customMountY = document.getElementById("cableCustomY").value;
+    const floorId = document.getElementById("cableFloorSelect").value;
+    const name = document.getElementById("cableLabelInput").value.trim();
+    const x1 = document.getElementById("cableX1").value;
+    const z1 = document.getElementById("cableZ1").value;
+    const x2 = document.getElementById("cableX2").value;
+    const z2 = document.getElementById("cableZ2").value;
+
+    const added = window.monitsApi.addCableRunToPlan({
+      cableType,
+      placementZone,
+      customMountY,
+      floorId,
+      name,
+      x1,
+      z1,
+      x2,
+      z2
+    });
+
+    const msgEl = document.getElementById("cableStatusMsg");
+    if (added && msgEl) {
+      msgEl.textContent = isId
+        ? `✓ Ditambahkan: ${added.name} (Elevasi Y=${added.mount_y}m)`
+        : `✓ Added to 3D & DB: ${added.name} (Elevation Y=${added.mount_y}m)`;
+    }
+  };
+
   window.startNewFloorPlan = function() {
-    const isId = currentLang === "id";
-    const msg = isId 
+    const msg = isId
       ? "Buat denah fasilitas 3D baru dari awal? Perubahan saat ini dapat disimpan."
       : "Start a new 3D facility layout from scratch? Current layout can be saved first.";
 
@@ -290,19 +539,21 @@
         const newFloorName = isId ? "Lantai Dasar" : "Ground Floor";
         panel.data.edit({
           version: 1,
-          settings: { grid: 0.1, wall_exterior: 0.25, wall_interior: 0.15 },
+          settings: { grid: 0.1, wall_exterior: 0.25, wall_interior: 0.15, roof: { type: "none" } },
           floors: [
             {
-              id: "floor_ground",
+              id: "ground",
               name: newFloorName,
               elevation: 0,
               height: 3.5,
-              cut_height: 1.2,
+              cut_height: 1.4,
+              ha_floor: "ground",
               rooms: [],
               walls: [],
               furniture: [],
               openings: [],
               placements: [],
+              outdoor: [],
               background: null
             }
           ]
@@ -328,8 +579,7 @@
         panel.narrow = window.innerWidth < 870;
         window.nfPanel = panel;
 
-        // Ensure duplicate internal header is suppressed
-        setInterval(hideDuplicateHeader, 250);
+        setInterval(styleIntegratedPanel, 250);
       }
     } catch (err) {
       console.error("Failed to initialize NextFloor interface:", err);

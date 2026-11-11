@@ -3877,14 +3877,32 @@ A plugin runs with the same rights as NextFloor in your browser. The file has be
           <button aria-pressed=${e.readable} title=${this.t("readable_hint")} @click=${()=>this.setPref("readable",!e.readable)}>Aa ${this.t("readable")}</button>
           <button aria-pressed=${e.stats} title=${this.t("fps_title")} @click=${()=>this.setPref("stats",!e.stats)}>${this.t("fps")}</button>
         </div>
-      </div>`}renderHeader(e){let t=this.data.saveState,n=(i,s,a="")=>m`<button role="tab" class=${a} aria-pressed=${this._mode===i} @click=${()=>this.setMode(i)}>${s}</button>`,o=t==="saving"?"saving":t==="saved"?"saved":"save_error";return m`<header class="nf-header">
-      <ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>
-      <h1>${qu}NextFloor</h1>
-      ${this.isAdmin?m`<div class="nf-seg" role="tablist">${n("view",this.t("view"))}${n("editor",this.t("editor"))}${n("extensions",`\u2726 ${this.t("ext_tab")}`,"nf-tab-ext")}</div>`:f}
+      </div>`}renderHeader(e){let t=this.data.saveState,isId=(this.hass?.language||"en").startsWith("id"),n=(i,s,a="",bid="")=>m`<button id=${bid||f} role="tab" class=${a} aria-pressed=${this._mode===i} @click=${()=>this.setMode(i)}>${s}</button>`,o=t==="saving"?"saving":t==="saved"?"saved":"save_error";return m`<header class="nf-header monits-top-navbar">
+      <h1>${qu}Server_Monits</h1>
+      ${this.isAdmin?m`<div class="nf-seg" role="tablist">${n("view",this.t("view"),"","btnViewMode")}${n("editor",this.t("editor"),"","btnEditMode")}${n("extensions",`\u2726 ${this.t("ext_tab")}`,"nf-tab-ext","btnExtMode")}</div>`:f}
+      <div class="nf-seg">
+        <button id="btnNewDesign" title=${isId?"Buat denah fasilitas 3D baru":"Create new 3D facility plan"} @click=${()=>window.startNewFloorPlan?.()}>\u2795 ${isId?"Desain Baru":"New Plan"}</button>
+        <button id="btnVirtualDb" title=${isId?"Kontrol Lampu Virtual & Data Sensor DB":"Virtual Lights & DB Sensor Data"} @click=${()=>window.toggleMonitsDrawer?.("devices")}>\uD83D\uDCA1 ${isId?"Lampu & Sensor DB":"Lights & DB Sensors"}</button>
+        <button id="btnCablesMgr" title=${isId?"Jalur Kabel 3D (Bawah Lantai / Dinding / Plafon)":"3D Cabling (Below Floor / Wall / Ceiling)"} @click=${()=>window.toggleMonitsDrawer?.("cables")}>\uD83D\uDD0C ${isId?"Kabel 3D":"3D Cables"}</button>
+      </div>
       <span class="nf-grow"></span>
       ${this._mode==="view"&&e?.floors.some(i=>i.rooms.length)?this.renderViewOptions():f}
       ${this._mode==="editor"&&t!=="idle"?m`<span class="nf-save nf-save-${t}">${this.t(o)}</span>`:f}
-      <span class="nf-version" title=${this.t("version_hint",{backend:this.data.backendVersion??"?"})}>v${this.data.frontendVersion}</span>
+      <div class="nf-seg">
+        <button @click=${()=>location.href="/admin/users"}>${isId?"Pengguna":"Users"}</button>
+        <button @click=${()=>location.href="/admin/settings"}>${isId?"Pengaturan":"Settings"}</button>
+        <button @click=${()=>location.href="/admin/audit"}>Audit</button>
+      </div>
+      <label class="nf-seg nf-clock-pick" title="Language / Bahasa">
+        \uD83C\uDF10
+        <select id="langSwitcher" aria-label="Language" @change=${ev=>window.switchLanguage?.(ev.target.value)}>
+          <option value="en" ?selected=${!isId}>EN</option>
+          <option value="id" ?selected=${isId}>ID</option>
+        </select>
+      </label>
+      <div class="nf-seg">
+        <button title=${isId?"Keluar":"Logout"} @click=${()=>window.handleLogout?.()}>\u23FB ${isId?"Keluar":"Logout"}</button>
+      </div>
     </header>`}renderNotices(){let e=this.data,t=[];if(e.needsRestart&&t.push(e.versionGap==="frontend"?m`<div class="nf-notice nf-notice-warn">
               ${this.t("needs_reload",{frontend:e.frontendVersion,backend:e.backendVersion??"?"})}
               <button class="nf-btn" @click=${()=>location.reload()}>${this.t("reload_page")}</button>

@@ -197,37 +197,16 @@ async def metrics(request: Request):
 
 
 # --- WebSocket Live Streaming & Telemetry Hub ---
-
-class LiveConnectionManager:
-    def __init__(self):
-        self.active_connections: list[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: dict):
-        for connection in list(self.active_connections):
-            try:
-                await connection.send_json(message)
-            except Exception:
-                self.disconnect(connection)
-
-live_ws_manager = LiveConnectionManager()
+from backend.app.services.notifier import notifier as live_ws_manager
 
 
 @app.websocket("/ws/live")
 async def websocket_live_endpoint(websocket: WebSocket):
-    """Realtime WebSocket telemetry, notifications, and pulse updates."""
+    """Realtime WebSocket telemetry, notifications, and virtual state updates."""
     await live_ws_manager.connect(websocket)
     try:
         while True:
-            data = await websocket.receive_text()
-            # Respond to client heartbeats
+            await websocket.receive_text()
             await websocket.send_json({"type": "pong", "timestamp": int(time.time())})
     except WebSocketDisconnect:
         live_ws_manager.disconnect(websocket)
