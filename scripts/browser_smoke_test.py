@@ -223,12 +223,38 @@ def run_smoke_test():
             page.fill("#newSensorTemp", "19.8")
             page.fill("#newSensorHum", "42.5")
             page.click("#btnPlaceSensorIn3D")
-            page.wait_for_timeout(600)
+            page.wait_for_function("() => (document.querySelector('#sensorPlaceStatusMsg')?.innerText || '').includes('Cold Aisle Rack B09')", timeout=8000)
 
             place_msg = page.inner_text("#sensorPlaceStatusMsg")
             if "Cold Aisle Rack B09" not in place_msg:
                 raise RuntimeError(f"Expected sensor placement confirmation, got '{place_msg}'")
             print(f"  ✓ Sensor placed at specific coordinates & saved to DB: {place_msg}")
+
+            # Verify 3D Floating Hologram Card (.live-card-env) is 3D-projected and visible, plus visible .nf-dev sensor pins
+            live_card_check = page.evaluate("""() => {
+                const v3d = document.querySelector('nextfloor-panel')?.shadowRoot?.querySelector('nf-view3d');
+                if (!v3d || !v3d.shadowRoot) return { found: false };
+                const card = v3d.shadowRoot.querySelector('.live-card-env');
+                if (!card) return { found: false };
+                const cs = getComputedStyle(card);
+                const rings = card.querySelectorAll('svg.live-ring').length;
+                const hasSolarPath = !!card.querySelector('.live-day svg path.live-day-solar');
+                const hasUsePath = !!card.querySelector('.live-day svg path.live-day-use');
+                const visibleSensorPins = [...v3d.shadowRoot.querySelectorAll('.nf-dev')].filter(el => el.dataset.entity?.startsWith('sensor.') && getComputedStyle(el).display !== 'none').length;
+                return {
+                    found: true,
+                    visibility: cs.visibility,
+                    position: cs.position,
+                    transform: card.style.transform,
+                    rings,
+                    hasSolarPath,
+                    hasUsePath,
+                    visibleSensorPins
+                };
+            }""")
+            if not live_card_check.get("found") or live_card_check.get("visibility") != "visible" or live_card_check.get("rings") != 2 or not live_card_check.get("hasSolarPath") or live_card_check.get("visibleSensorPins", 0) < 4:
+                raise RuntimeError(f"Expected 3D-anchored visible .live-card-env with 2 circular gauges and 24h chart, got: {live_card_check}")
+            print(f"  ✓ 3D-Anchored Sensor Hologram (.live-card-env @ {live_card_check['transform']}) and {live_card_check['visibleSensorPins']} 3D sensor pins verified with Temp/Humidity Gauges & 24h Chart!")
 
             # Toggle virtual light off then on
             page.evaluate("() => window.onVirtualLightToggle('light.server_alpha_light', 'off')")
@@ -249,7 +275,7 @@ def run_smoke_test():
             page.locator("#btnCablesMgr").click()
             page.wait_for_selector("#drawerCables.open", timeout=5000)
             page.click("button[onclick='handleAddCableRun()']")
-            page.wait_for_timeout(400)
+            page.wait_for_function("() => (document.querySelector('#cableStatusMsg')?.innerText || '').length > 5", timeout=8000)
             cable_msg = page.inner_text("#cableStatusMsg")
             if "Added" not in cable_msg and "Ditambahkan" not in cable_msg:
                 raise RuntimeError(f"Expected cable addition confirmation, got '{cable_msg}'")

@@ -148,6 +148,8 @@ async def csrf_middleware(request: Request, call_next):
         return JSONResponse(status_code=e.status_code, content={"detail": e.detail})
         
     response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
     return response
 
 

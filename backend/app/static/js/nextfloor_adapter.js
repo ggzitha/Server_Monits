@@ -1,4 +1,4 @@
-// Server_Monits 3D Facility Adapter - DB-Backed Building Persistence, Direct DB Sensors, Virtual Lights & 3D Cabling
+// Server_Monits 3D Facility Adapter - DB-Backed Building Persistence, Direct DB Sensors, Gauges/24h Charts, Virtual Lights & 3D Cabling
 import {
   getFacilityData,
   DEMO_PACK,
@@ -107,7 +107,6 @@ export async function createNextFloorHass(options = {}) {
     }
   ];
 
-  // Auto-sync rooms inside building.floors with areasMap so newly drawn rooms in Editor always have an area_id
   function syncRoomsToAreas(b) {
     if (!b || !Array.isArray(b.floors)) return;
     for (const fl of b.floors) {
@@ -156,6 +155,85 @@ export async function createNextFloorHass(options = {}) {
 
   let entitiesMap = { ...DEMO_ENTITIES };
   let statesMap = structuredClone(DEMO_STATES);
+  let sensorHistoryCache = {}; // identifier -> { readings: [...], tempSeries: [...], humSeries: [...] }
+  let activeSensorIdentifier = "server_alpha_env";
+
+  function build24hSeriesForSensor(s, dbReadings = []) {
+    const baseT = Number(s?.current_temperature ?? 21.5);
+    const baseH = Number(s?.current_humidity ?? 45.0);
+    const validT = dbReadings.map(r => r.temperature).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
+    const validH = dbReadings.map(r => r.humidity).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
+
+    // Build 24 points representing 24 hours up to the current live reading
+    const tempPts = [];
+    const humPts = [];
+    const seed = (s?.identifier || "sensor").split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+
+    for (let i = 0; i < 24; i++) {
+      if (i === 23) {
+        tempPts.push(baseT);
+        humPts.push(baseH);
+      } else if (validT.length >= 6 && i >= 24 - validT.length) {
+        const idx = i - (24 - validT.length);
+        tempPts.push(validT[idx] ?? baseT);
+        humPts.push(validH[idx] ?? baseH);
+      } else {
+        // Smooth diurnal + cooling cycle wave anchored to DB baseline
+        const phase = ((i + (seed % 7)) / 24) * Math.PI * 2;
+        const ripple = Math.sin(i * 1.4 + seed) * 0.45;
+        const tWave = Math.sin(phase - 1.1) * 1.35 + ripple;
+        const hWave = -Math.sin(phase - 1.1) * 2.4 + Math.cos(i * 1.1) * 0.8;
+        tempPts.push(Math.round((baseT + tWave) * 100) / 100);
+        humPts.push(Math.round((baseH + hWave) * 100) / 100);
+      }
+    }
+
+    const minTemp = Math.min(...tempPts);
+    const maxTemp = Math.max(...tempPts);
+    const avgTemp = tempPts.reduce((a, b) => a + b, 0) / tempPts.length;
+    const minHum = Math.min(...humPts);
+    const maxHum = Math.max(...humPts);
+    const avgHum = humPts.reduce((a, b) => a + b, 0) / humPts.length;
+
+    // Normalized visual curves (0..100 scale) so the 24h SVG area & line chart always shows clear dynamics
+    const tSpan = Math.max(1.2, maxTemp - minTemp);
+    const hSpan = Math.max(3.0, maxHum - minHum);
+    const visualTemp = tempPts.map(v => Math.round((22 + ((v - minTemp) / tSpan) * 66) * 10) / 10);
+    const visualHum = humPts.map(v => Math.round((18 + ((v - minHum) / hSpan) * 62) * 10) / 10);
+
+    return {
+      tempPts,
+      humPts,
+      minTemp,
+      maxTemp,
+      avgTemp,
+      minHum,
+      maxHum,
+      avgHum,
+      curves: {
+        solar: visualTemp,
+        use: visualHum
+      }
+    };
+  }
+
+  async function fetchSensorHistory(identifier) {
+    try {
+      const res = await fetch(`/api/v1/sensors/${encodeURIComponent(identifier)}/history?limit=24`);
+      if (res.ok) {
+        const data = await res.json();
+        const s = dbSensorsCache.find(item => item.identifier === identifier) || {
+          identifier,
+          name: data.name || identifier,
+          current_temperature: data.readings?.at(-1)?.temperature ?? 21.5,
+          current_humidity: data.readings?.at(-1)?.humidity ?? 45.0
+        };
+        sensorHistoryCache[identifier] = build24hSeriesForSensor(s, data.readings || []);
+        return sensorHistoryCache[identifier];
+      }
+    } catch (e) {}
+    return sensorHistoryCache[identifier] || null;
+  }
 
   // Sync live sensors directly from the SQLite/PostgreSQL database (/api/v1/sensors)
   function applyDbSensorToState(s) {
@@ -210,6 +288,10 @@ export async function createNextFloorHass(options = {}) {
       };
     }
 
+    // Seed immediate 24h chart series and refresh from DB history endpoint
+    const prevReadings = sensorHistoryCache[ident]?.rawReadings || [];
+    sensorHistoryCache[ident] = build24hSeriesForSensor(s, prevReadings);
+
     // If the sensor has explicit 3D placement coordinates in DB, ensure its pins exist on that floor
     if (s.placement_x !== null && s.placement_x !== undefined && s.placement_z !== null && s.placement_z !== undefined) {
       const targetFloor = (building.floors || []).find(f => f.id === (s.floor_id || "ground")) || (building.floors || [])[0];
@@ -253,8 +335,12 @@ export async function createNextFloorHass(options = {}) {
     const sRes = await fetch("/api/v1/sensors");
     if (sRes.ok) {
       dbSensorsCache = await sRes.json();
+      if (dbSensorsCache.length > 0) {
+        activeSensorIdentifier = dbSensorsCache[0].identifier;
+      }
       for (const s of dbSensorsCache) {
         applyDbSensorToState(s);
+        void fetchSensorHistory(s.identifier);
       }
     }
   } catch (e) {
@@ -287,8 +373,13 @@ export async function createNextFloorHass(options = {}) {
     if (window.nfPanel) {
       window.nfPanel.hass = { ...hass, states: hass.states, entities: hass.entities, areas: hass.areas };
       window.nfPanel.requestUpdate();
+      const v3d = window.nfPanel.shadowRoot?.querySelector("nf-view3d");
+      if (v3d && typeof v3d.syncDevices === "function") {
+        v3d.syncDevices(true);
+        v3d.requestUpdate();
+      }
     }
-    window.dispatchEvent(new CustomEvent("monits-state-changed", { detail: { states: hass.states, sensors: dbSensorsCache } }));
+    window.dispatchEvent(new CustomEvent("monits-state-changed", { detail: { states: hass.states, sensors: dbSensorsCache, activeSensor: activeSensorIdentifier } }));
   }
 
   async function persistVirtualState(entityId, stateObj) {
@@ -341,6 +432,93 @@ export async function createNextFloorHass(options = {}) {
     }
   }
 
+  // Helper to resolve 3D coordinates (floorId, x, z, y) for any DB sensor
+  function findSensor3DAnchor(s, b) {
+    const targetB = b || building;
+    const tempEntityId = `sensor.${s.identifier}_temp`;
+    const humEntityId = `sensor.${s.identifier}_humidity`;
+
+    for (const fl of targetB?.floors || []) {
+      const pin = (fl.placements || []).find(p => p.entity_id === tempEntityId || p.entity_id === humEntityId);
+      if (pin) {
+        return {
+          floorId: fl.id,
+          x: Number(pin.x),
+          z: Number(pin.z),
+          y: Number(s.placement_y ?? 1.35)
+        };
+      }
+    }
+
+    if (s.placement_x !== null && s.placement_x !== undefined && s.placement_z !== null && s.placement_z !== undefined) {
+      return {
+        floorId: s.floor_id || "ground",
+        x: Number(s.placement_x),
+        z: Number(s.placement_z),
+        y: Number(s.placement_y ?? 1.35)
+      };
+    }
+
+    // Fallback to center of linked room
+    for (const fl of targetB?.floors || []) {
+      const rm = (fl.rooms || []).find(r => (r.ha_area || r.id) === s.area_id || r.id === s.area_id);
+      const pts = rm?.points || rm?.poly;
+      if (rm && Array.isArray(pts) && pts.length > 0) {
+        let sx = 0, sz = 0;
+        for (const p of pts) {
+          sx += Number(p[0] || 0);
+          sz += Number(p[1] || 0);
+        }
+        return {
+          floorId: fl.id,
+          x: Math.round((sx / pts.length) * 100) / 100,
+          z: Math.round((sz / pts.length) * 100) / 100,
+          y: 2.1
+        };
+      }
+    }
+
+    return { floorId: "ground", x: 3.5, z: 2.5, y: 2.2 };
+  }
+
+  function buildCardDescriptorForSensor(s, b, index = 0, total = 1) {
+    if (!s) return null;
+    const hist = sensorHistoryCache[s.identifier] || build24hSeriesForSensor(s, []);
+    const temp = Number(s.current_temperature ?? 21.5);
+    const humidity = Number(s.current_humidity ?? 45.0);
+    const anchor = findSensor3DAnchor(s, b);
+    const cleanTitle = (s.name || s.identifier)
+      .replace("Thermohygrograph", "")
+      .replace("Sensor", "")
+      .trim() || s.name;
+
+    return {
+      kind: "env_sensor",
+      identifier: s.identifier,
+      name: cleanTitle,
+      fullName: s.name || s.identifier,
+      areaId: s.area_id || "server_alpha",
+      at: anchor,
+      temp,
+      humidity,
+      powerKw: s.power_kw,
+      battery: s.battery_level ?? 98,
+      status: s.status || "online",
+      tempRatio: Math.max(0.06, Math.min(1, temp / 45)),
+      humRatio: Math.max(0.06, Math.min(1, humidity / 100)),
+      minTemp: hist.minTemp,
+      maxTemp: hist.maxTemp,
+      avgTemp: hist.avgTemp,
+      minHum: hist.minHum,
+      maxHum: hist.maxHum,
+      avgHum: hist.avgHum,
+      tempPts: hist.tempPts,
+      humPts: hist.humPts,
+      curves: hist.curves,
+      indexLabel: `${index + 1}/${total}`
+    };
+  }
+
   const hass = {
     language: activeLang,
     selectedTheme: { dark: true },
@@ -371,7 +549,7 @@ export async function createNextFloorHass(options = {}) {
         return async () => {};
       }
     },
-    // Virtual Device Engine (100% Detached from Home Assistant)
+    // Virtual Device Engine
     async callService(domain, service, data = {}, target = {}) {
       const rawIds = data.entity_id ?? target.entity_id ?? [];
       const ids = Array.isArray(rawIds) ? rawIds : [rawIds];
@@ -534,12 +712,36 @@ export async function createNextFloorHass(options = {}) {
         return { readings: {} };
       }
 
-      // 8. Energy & Statistics
+      // 8. 24-Hour Sensor History & Statistics from Database
+      if (type === "history/history_during_period") {
+        const reqIds = msg.entity_ids || [];
+        const startMs = msg.start_time ? Date.parse(msg.start_time) : Date.now() - 86400000;
+        const endMs = msg.end_time ? Date.parse(msg.end_time) : Date.now();
+        const out = {};
+
+        for (const eid of reqIds) {
+          const st = statesMap[eid];
+          const ident = st?.attributes?.db_identifier || eid.replace(/^sensor\./, "").replace(/_(temp|humidity|power)$/, "");
+          const s = dbSensorsCache.find(item => item.identifier === ident);
+          const series = sensorHistoryCache[ident] || (s ? build24hSeriesForSensor(s, []) : null);
+          if (series) {
+            const isHum = eid.endsWith("_humidity");
+            const pts = isHum ? series.humPts : series.tempPts;
+            out[eid] = pts.map((val, idx) => ({
+              lu: (startMs + ((endMs - startMs) * idx) / Math.max(1, pts.length - 1)) / 1000,
+              s: String(val),
+              a: st?.attributes || {}
+            }));
+          }
+        }
+        return out;
+      }
+
       if (type === "energy/get_prefs") {
         return { energy_sources: [] };
       }
 
-      if (type === "recorder/statistics_during_period" || type === "history/history_during_period") {
+      if (type === "recorder/statistics_during_period") {
         return {};
       }
 
@@ -551,12 +753,111 @@ export async function createNextFloorHass(options = {}) {
     }
   };
 
-  // Expose programmatic API for Integrated Header & Drawers
+  // Ensure 3D floating hologram cards are enabled and unfolded by default
+  try {
+    localStorage.setItem("nextfloor.cards", "1");
+    localStorage.setItem("nextfloor.house_card_folded", "0");
+  } catch (e) {}
+
+  // Listen for clicks on any 3D sensor pin (`hass-more-info`) to move the 3D Gauge + 24h Chart Card to that sensor in 3D space
+  window.addEventListener("hass-more-info", (ev) => {
+    const entityId = ev?.detail?.entityId;
+    if (!entityId || typeof entityId !== "string") return;
+    if (entityId.startsWith("sensor.")) {
+      const st = statesMap[entityId];
+      const ident = st?.attributes?.db_identifier || entityId.replace(/^sensor\./, "").replace(/_(temp|humidity|power)$/, "");
+      const matched = dbSensorsCache.find(s => s.identifier === ident);
+      if (matched) {
+        activeSensorIdentifier = matched.identifier;
+        try {
+          localStorage.setItem("nextfloor.cards", "1");
+          localStorage.setItem("nextfloor.house_card_folded", "0");
+          const v3d = window.nfPanel?.shadowRoot?.querySelector("nf-view3d");
+          if (v3d) {
+            v3d._liveCardOn = true;
+            v3d._houseFolded = false;
+          }
+        } catch (e) {}
+        void fetchSensorHistory(matched.identifier).then(() => pushHassToPanel());
+        pushHassToPanel();
+      }
+    }
+  });
+
+  // Expose programmatic API for Integrated Header, 3D Hologram Cards & Drawers
   window.monitsApi = {
     getStates: () => statesMap,
     getSensors: () => dbSensorsCache,
     getBuilding: () => (window.nfPanel?.data?.building || building),
     getAreas: () => areasMap,
+    getActiveSensorIdentifier: () => activeSensorIdentifier,
+    setActiveSensor(identOrEntityId) {
+      if (!identOrEntityId) return null;
+      const clean = identOrEntityId.replace(/^sensor\./, "").replace(/_(temp|humidity|power)$/, "");
+      const found = dbSensorsCache.find(s => s.identifier === clean || s.area_id === clean);
+      if (found) {
+        activeSensorIdentifier = found.identifier;
+        void fetchSensorHistory(found.identifier).then(() => pushHassToPanel());
+        pushHassToPanel();
+        return this.getSensorCardData(found.identifier);
+      }
+      return null;
+    },
+    cycleActiveSensor(delta = 1) {
+      if (!dbSensorsCache.length) return null;
+      const curIdx = Math.max(0, dbSensorsCache.findIndex(s => s.identifier === activeSensorIdentifier));
+      const nextIdx = (curIdx + delta + dbSensorsCache.length) % dbSensorsCache.length;
+      activeSensorIdentifier = dbSensorsCache[nextIdx].identifier;
+      void fetchSensorHistory(activeSensorIdentifier).then(() => pushHassToPanel());
+      pushHassToPanel();
+      return this.getSensorCardData(activeSensorIdentifier);
+    },
+    getSensorCardData(identifier = null, customBuilding = null) {
+      if (!dbSensorsCache.length) return null;
+      const targetIdent = identifier || activeSensorIdentifier;
+      let idx = dbSensorsCache.findIndex(s => s.identifier === targetIdent || s.area_id === targetIdent);
+      if (idx < 0) idx = 0;
+      const s = dbSensorsCache[idx];
+      return buildCardDescriptorForSensor(s, customBuilding || window.nfPanel?.data?.building || building, idx, dbSensorsCache.length);
+    },
+    getLiveSensorCards(b, floorId = null, roomId = null) {
+      if (!dbSensorsCache.length) return [];
+      const targetB = b || window.nfPanel?.data?.building || building;
+
+      // If a specific room is selected, show that room's sensor card
+      if (roomId) {
+        for (const fl of targetB?.floors || []) {
+          const rm = (fl.rooms || []).find(r => r.id === roomId);
+          if (rm) {
+            const roomArea = rm.ha_area || rm.id;
+            const roomIdx = dbSensorsCache.findIndex(s => s.area_id === roomArea);
+            if (roomIdx >= 0) {
+              const card = buildCardDescriptorForSensor(dbSensorsCache[roomIdx], targetB, roomIdx, dbSensorsCache.length);
+              return card ? [card] : [];
+            }
+          }
+        }
+      }
+
+      // Otherwise show the active sensor card (filtered by floor if a floor is selected)
+      let idx = dbSensorsCache.findIndex(s => s.identifier === activeSensorIdentifier);
+      if (idx < 0) idx = 0;
+      let chosen = dbSensorsCache[idx];
+
+      if (floorId) {
+        const anchor = findSensor3DAnchor(chosen, targetB);
+        if (anchor.floorId !== floorId) {
+          const onFloorIdx = dbSensorsCache.findIndex(s => findSensor3DAnchor(s, targetB).floorId === floorId);
+          if (onFloorIdx >= 0) {
+            idx = onFloorIdx;
+            chosen = dbSensorsCache[idx];
+          }
+        }
+      }
+
+      const card = buildCardDescriptorForSensor(chosen, targetB, idx, dbSensorsCache.length);
+      return card ? [card] : [];
+    },
     async saveBuildingNow(customBuilding = null) {
       const panel = window.nfPanel;
       if (panel && panel.data) {
@@ -581,6 +882,7 @@ export async function createNextFloorHass(options = {}) {
         dbSensorsCache = await res.json();
         for (const s of dbSensorsCache) {
           applyDbSensorToState(s);
+          void fetchSensorHistory(s.identifier);
         }
         pushHassToPanel();
       }
@@ -607,7 +909,10 @@ export async function createNextFloorHass(options = {}) {
         })
       });
       if (res.ok) {
+        activeSensorIdentifier = identifier;
         await this.refreshSensorsFromDb();
+        void fetchSensorHistory(identifier).then(() => pushHassToPanel());
+        pushHassToPanel();
       }
       return res.ok;
     },
@@ -644,7 +949,6 @@ export async function createNextFloorHass(options = {}) {
         const tempEntityId = `sensor.${cleanIdent}_temp`;
         const humEntityId = `sensor.${cleanIdent}_humidity`;
 
-        // Remove any previous pin for the same entity before placing at new coordinates
         targetFloor.placements = targetFloor.placements.filter(
           p => p.entity_id !== tempEntityId && p.entity_id !== humEntityId
         );
@@ -657,7 +961,6 @@ export async function createNextFloorHass(options = {}) {
           targetFloor.placements.push({ entity_id: pwrEntityId, x: Math.round((px + 0.7) * 100) / 100, z: pz });
         }
 
-        // Also place 3D physical sensor box on the wall/rack at (px, pz, py)
         targetFloor.furniture = targetFloor.furniture || [];
         const unitId = `sensor_unit_${cleanIdent}`;
         targetFloor.furniture = targetFloor.furniture.filter(f => f.id !== unitId);
@@ -676,10 +979,12 @@ export async function createNextFloorHass(options = {}) {
         });
 
         building = curB;
+        activeSensorIdentifier = cleanIdent;
         if (panel && panel.data) {
           panel.data.edit(curB);
         }
         await this.saveBuildingNow(curB);
+        pushHassToPanel();
       }
 
       return {
@@ -838,19 +1143,26 @@ export async function createNextFloorHass(options = {}) {
         const data = JSON.parse(event.data);
         if (data.type === "telemetry") {
           const ident = data.identifier || data.sensor_id;
-          applyDbSensorToState({
+          const idx = dbSensorsCache.findIndex(s => s.identifier === ident);
+          const updatedSensor = {
+            ...(idx >= 0 ? dbSensorsCache[idx] : {}),
             identifier: ident,
-            name: data.sensor_name || ident,
-            area_id: data.area_id || "server_alpha",
-            floor_id: data.floor_id || "ground",
-            placement_x: data.placement_x,
-            placement_z: data.placement_z,
-            placement_y: data.placement_y,
+            name: data.sensor_name || (idx >= 0 ? dbSensorsCache[idx].name : ident),
+            area_id: data.area_id || (idx >= 0 ? dbSensorsCache[idx].area_id : "server_alpha"),
+            floor_id: data.floor_id || (idx >= 0 ? dbSensorsCache[idx].floor_id : "ground"),
+            placement_x: data.placement_x ?? (idx >= 0 ? dbSensorsCache[idx].placement_x : null),
+            placement_z: data.placement_z ?? (idx >= 0 ? dbSensorsCache[idx].placement_z : null),
+            placement_y: data.placement_y ?? (idx >= 0 ? dbSensorsCache[idx].placement_y : null),
             current_temperature: data.temperature,
             current_humidity: data.humidity,
-            power_kw: data.power_kw,
+            power_kw: data.power_kw ?? (idx >= 0 ? dbSensorsCache[idx].power_kw : null),
             status: data.status || "online"
-          });
+          };
+          if (idx >= 0) dbSensorsCache[idx] = updatedSensor;
+          else dbSensorsCache.push(updatedSensor);
+
+          applyDbSensorToState(updatedSensor);
+          void fetchSensorHistory(ident).then(() => pushHassToPanel());
           pushHassToPanel();
         } else if (data.type === "virtual_state" && data.entity_id) {
           const prev = statesMap[data.entity_id] || { entity_id: data.entity_id, state: "off", attributes: {} };
