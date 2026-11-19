@@ -330,6 +330,15 @@
       <h4 class="monits-section-title">
         {{ '3. Sakelar Lampu Ruangan Virtual (Kontrol 3D Langsung)' if current_lang == 'id' else '3. Virtual Room Lights (Direct 3D Control)' }}
       </h4>
+      <div style="background: rgba(8, 15, 30, 0.85); border: 1px solid rgba(0, 240, 255, 0.22); border-radius: 8px; padding: 8px; margin-bottom: 8px;">
+        <div style="display:grid; grid-template-columns: 1fr 56px 56px 32px auto; gap:5px; align-items:center;">
+          <input id="newLightName" type="text" class="monits-input" placeholder="{{ 'Nama Lampu Baru' if current_lang == 'id' else 'New Light Name' }}" />
+          <input id="newLightX" type="number" step="0.2" value="2.5" class="monits-input" title="X (m)" placeholder="X" />
+          <input id="newLightZ" type="number" step="0.2" value="1.5" class="monits-input" title="Z (m)" placeholder="Z" />
+          <input id="newLightColor" type="color" value="#fff4d6" title="Light Color" style="width:28px; height:26px; border:none; background:none; cursor:pointer;" />
+          <button class="monits-pill-btn on" style="padding:5px 8px;" onclick="window.handleAddVirtualLight()">➕</button>
+        </div>
+      </div>
       <div id="virtualLightsList"></div>
     </div>
   </div>
@@ -405,16 +414,43 @@
           </div>
         </label>
       </div>
+
+      <!-- Multi-Point Turning Waypoints & Canvas Picker -->
+      <div style="margin-top:8px; padding:8px; border-radius:8px; background:rgba(8,15,30,0.8); border:1px solid rgba(0,240,255,0.2);">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
+          <span style="font-size:0.72rem; color:#94a3b8; font-weight:600;">{{ 'Titik Belok / Waypoints (Opsional)' if current_lang == 'id' else 'Turning Points / Waypoints (Optional)' }}</span>
+          <div style="display:flex; gap:4px;">
+            <button type="button" id="btnPickCablePoints" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 7px;" onclick="window.toggleCablePointPicker()">
+              📍 {{ 'Pilih di Denah' if current_lang == 'id' else 'Pick on Plan' }}
+            </button>
+            <button type="button" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 7px;" onclick="window.addCableWaypoint()">
+              + {{ 'Belok' if current_lang == 'id' else 'Turn' }}
+            </button>
+          </div>
+        </div>
+        <div id="cableWaypointsList" style="display:flex; flex-direction:column; gap:4px;"></div>
+        <div id="cablePickHint" style="display:none; font-size:0.68rem; color:#38bdf8; margin-top:4px;">
+          {{ 'Klik pada kanvas denah untuk menambahkan titik belok kabel (X, Z)...' if current_lang == 'id' else 'Click on the floor plan canvas to pick cable turning points (X, Z)...' }}
+        </div>
+      </div>
+
       <button class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:8px;" onclick="handleAddCableRun()">
         ➕ {{ 'Tambahkan Jalur Kabel ke 3D & Simpan DB' if current_lang == 'id' else 'Add Cable Run to 3D Scene & Save to DB' }}
       </button>
       <div id="cableStatusMsg" style="font-size:0.75rem; color:#4ade80; margin-top:6px;"></div>
     </div>
+
+    <div>
+      <h4 class="monits-section-title">
+        {{ '3. Daftar Jalur Kabel 3D Aktif (Edit / Hapus)' if current_lang == 'id' else '3. Placed 3D Cable Runs (Edit / Delete)' }}
+      </h4>
+      <div id="existingCablesList"></div>
+    </div>
   </div>
 </aside>
 
 <script type="module">
-  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261119n";
+  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261119q";
 
   const currentLang = "{{ current_lang|default('en') }}";
   const isId = currentLang === "id";
@@ -708,14 +744,17 @@
         const name = st.attributes?.friendly_name || id;
         const isLight = id.startsWith("light.");
         const hex = rgbToHex(st.attributes?.rgb_color);
+        const safeId = id.replace(/[^a-zA-Z0-9_]/g, "_");
         return `
-          <div class="monits-card-row">
-            <span style="font-weight:600; color:${isOn ? '#f8fafc' : '#94a3b8'};">${name}</span>
-            <div style="display:flex; align-items:center; gap:6px;">
-              ${isLight ? `<input type="color" value="${hex}" title="Light RGB Color" style="width:26px; height:24px; border:none; background:none; cursor:pointer;" onchange="window.onVirtualLightColor('${id}', this.value)" />` : ""}
+          <div class="monits-card-row" style="gap:5px; flex-wrap:nowrap;">
+            <input id="inp_light_name_${safeId}" type="text" class="monits-input" value="${String(name).replace(/"/g, "&quot;")}" style="flex:1; min-width:90px; font-size:0.74rem; padding:3px 6px;" />
+            <div style="display:flex; align-items:center; gap:4px; flex-shrink:0;">
+              ${isLight ? `<input type="color" value="${hex}" title="Light RGB Color" style="width:24px; height:24px; border:none; background:none; cursor:pointer;" onchange="window.onVirtualLightColor('${id}', this.value)" />` : ""}
               <button class="monits-pill-btn ${isOn ? 'on' : ''}" onclick="window.onVirtualLightToggle('${id}', '${isOn ? 'off' : 'on'}')">
                 ${isOn ? 'ON' : 'OFF'}
               </button>
+              <button class="monits-pill-btn" title="Rename Light" onclick="window.onRenameVirtualLight('${id}', '${safeId}')">💾</button>
+              <button class="monits-pill-btn" style="color:#f87171; border-color:rgba(248,113,113,0.35);" title="Delete Light" onclick="window.onDeleteVirtualLight('${id}', '${String(name).replace(/'/g, "\\'")}')">🗑️</button>
             </div>
           </div>
         `;
@@ -753,9 +792,9 @@
           ? ` · (${s.placement_x}m, ${s.placement_z}m)`
           : "";
         let fieldsHtml = "";
-        let cols = "1fr 64px auto auto";
+        let cols = "1fr 64px auto auto auto";
         if (sType === "thermohygrometer") {
-          cols = "1fr 62px 62px auto auto";
+          cols = "1fr 56px 56px auto auto auto";
           fieldsHtml = `
             <div style="display:flex; flex-direction:column; gap:2px;">
               <span style="font-size:0.62rem; color:#94a3b8;">°C</span>
@@ -823,9 +862,15 @@
               <button class="monits-pill-btn on" title="Save & Sync Sensor" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}')">
                 💾
               </button>
+              <button class="monits-pill-btn" style="color:#f87171; border-color:rgba(248,113,113,0.35);" title="Delete Sensor from DB & 3D" onclick="window.onDeleteDbSensor('${s.identifier}', '${(s.name || s.identifier).replace(/'/g, "\\'")}')">
+                🗑️
+              </button>
             </div>
             <details style="margin-top:6px; font-size:0.7rem;" ${hasSql ? 'open' : ''}>
-              <summary style="cursor:pointer; color:#94a3b8; user-select:none;">🗄️ Edit Type / Data Source / SQL Query</summary>
+              <summary style="cursor:pointer; color:#94a3b8; user-select:none;">✏️ Rename / Type / Data Source / SQL</summary>
+              <div style="margin-top:6px;">
+                <input id="inp_name_${s.identifier}" type="text" class="monits-input" value="${(s.name || s.identifier).replace(/"/g, "&quot;")}" placeholder="Sensor Name" style="width:100%; font-size:0.72rem;" />
+              </div>
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:6px;">
                 <select id="inp_type_${s.identifier}" class="monits-input" style="font-size:0.7rem;">${typeOptions}</select>
                 <select id="inp_ds_${s.identifier}" class="monits-input" style="font-size:0.7rem;">${dsOptions}</select>
@@ -878,6 +923,35 @@
     renderDevicesDrawer();
   };
 
+  window.handleAddVirtualLight = async function() {
+    if (!window.monitsApi) return;
+    const name = document.getElementById("newLightName")?.value?.trim() || "Room Light";
+    const x = document.getElementById("newLightX")?.value || 2.5;
+    const z = document.getElementById("newLightZ")?.value || 1.5;
+    const hexColor = document.getElementById("newLightColor")?.value || "#fff4d6";
+    const floorId = document.getElementById("newSensorFloor")?.value || "ground";
+    const areaId = document.getElementById("newSensorRoom")?.value || "server_room";
+    await window.monitsApi.addVirtualLight({ name, floorId, areaId, x, z, hexColor });
+    if (document.getElementById("newLightName")) document.getElementById("newLightName").value = "";
+    renderDevicesDrawer();
+  };
+
+  window.onRenameVirtualLight = async function(entityId, safeId) {
+    if (!window.monitsApi) return;
+    const newName = document.getElementById(`inp_light_name_${safeId}`)?.value?.trim();
+    if (!newName) return;
+    await window.monitsApi.renameVirtualLight(entityId, newName);
+    renderDevicesDrawer();
+  };
+
+  window.onDeleteVirtualLight = async function(entityId, name) {
+    if (!window.monitsApi) return;
+    const msg = isId ? `Hapus lampu "${name}" dari 3D?` : `Delete light "${name}" from 3D floor plan?`;
+    if (!confirm(msg)) return;
+    await window.monitsApi.deleteVirtualLight(entityId);
+    renderDevicesDrawer();
+  };
+
   window.handleSyncAllSqlSensors = async function(btn) {
     if (!window.monitsApi) return;
     if (btn) { btn.disabled = true; btn.textContent = "⏳..."; }
@@ -889,8 +963,19 @@
     }
   };
 
+  window.onDeleteDbSensor = async function(identifier, name) {
+    if (!window.monitsApi) return;
+    const msg = isId
+      ? `Hapus sensor "${name}" dari database dan denah 3D?`
+      : `Delete sensor "${name}" from the database and 3D floor plan?`;
+    if (!confirm(msg)) return;
+    await window.monitsApi.deleteSensor(identifier);
+    await renderDevicesDrawer();
+  };
+
   window.onSaveDbSensor = async function(identifier, areaId) {
     if (!window.monitsApi) return;
+    const newName = document.getElementById(`inp_name_${identifier}`)?.value?.trim() || undefined;
     const sensorType = document.getElementById(`inp_type_${identifier}`)?.value || "thermohygrometer";
     const dataSourceId = document.getElementById(`inp_ds_${identifier}`)?.value ?? "";
     const sqlQuery = document.getElementById(`inp_sql_${identifier}`)?.value ?? "";
@@ -905,6 +990,7 @@
     const v = document.getElementById(`inp_v_${identifier}`)?.value;
     await window.monitsApi.pushDbSensorReading({
       identifier,
+      ...(newName ? { name: newName } : {}),
       area_id: areaId,
       sensor_type: sensorType,
       data_source_id: dataSourceId,
@@ -933,6 +1019,78 @@
     }
   };
 
+  let cableWaypoints = [];
+  let cablePickActive = false;
+
+  function renderCableWaypoints() {
+    const wrap = document.getElementById("cableWaypointsList");
+    if (!wrap) return;
+    if (cableWaypoints.length === 0) {
+      wrap.innerHTML = `<div style="font-size:0.68rem; color:#64748b;">${isId ? "Belum ada titik belok — kabel lurus dari Awal ke Akhir." : "No turning points — straight run from Start to End."}</div>`;
+      return;
+    }
+    wrap.innerHTML = cableWaypoints.map((pt, idx) => `
+      <div style="display:flex; gap:4px; align-items:center;">
+        <span style="font-size:0.68rem; color:#38bdf8; min-width:34px;">P${idx + 1}</span>
+        <input type="number" step="0.1" value="${pt[0]}" class="monits-input" style="font-size:0.72rem; padding:2px 5px;" onchange="window.updateCableWaypoint(${idx}, 0, this.value)" />
+        <input type="number" step="0.1" value="${pt[1]}" class="monits-input" style="font-size:0.72rem; padding:2px 5px;" onchange="window.updateCableWaypoint(${idx}, 1, this.value)" />
+        <button type="button" class="monits-pill-btn" style="color:#f87171; padding:2px 6px;" onclick="window.removeCableWaypoint(${idx})">✕</button>
+      </div>
+    `).join("");
+  }
+
+  window.addCableWaypoint = function(x = null, z = null) {
+    const last = cableWaypoints.length > 0
+      ? cableWaypoints[cableWaypoints.length - 1]
+      : [Number(document.getElementById("cableX1")?.value || 2.2), Number(document.getElementById("cableZ1")?.value || 2.2)];
+    cableWaypoints.push([
+      x !== null ? Math.round(Number(x) * 100) / 100 : Math.round((last[0] + 1.0) * 100) / 100,
+      z !== null ? Math.round(Number(z) * 100) / 100 : Math.round(last[1] * 100) / 100
+    ]);
+    renderCableWaypoints();
+  };
+
+  window.updateCableWaypoint = function(idx, axis, val) {
+    if (cableWaypoints[idx]) cableWaypoints[idx][axis] = Number(val);
+  };
+
+  window.removeCableWaypoint = function(idx) {
+    cableWaypoints.splice(idx, 1);
+    renderCableWaypoints();
+  };
+
+  window.toggleCablePointPicker = function() {
+    cablePickActive = !cablePickActive;
+    const btn = document.getElementById("btnPickCablePoints");
+    const hint = document.getElementById("cablePickHint");
+    if (btn) btn.classList.toggle("on", cablePickActive);
+    if (hint) hint.style.display = cablePickActive ? "block" : "none";
+  };
+
+  document.addEventListener("pointerdown", (ev) => {
+    if (!cablePickActive) return;
+    if (ev.target.closest && ev.target.closest(".monits-drawer")) return;
+    // Map click relative to active floor bounding box on the viewport canvas
+    const panel = document.getElementById("monitPanel");
+    const b = window.monitsApi?.getBuilding?.();
+    const fl = (b?.floors || [])[0];
+    const rect = panel?.getBoundingClientRect();
+    if (!rect || !fl) return;
+    let minX = 0, maxX = 8, minZ = 0, maxZ = 5;
+    const allPts = (fl.rooms || []).flatMap(r => r.points || r.poly || []);
+    if (allPts.length > 0) {
+      minX = Math.min(...allPts.map(p => p[0]));
+      maxX = Math.max(...allPts.map(p => p[0]));
+      minZ = Math.min(...allPts.map(p => p[1]));
+      maxZ = Math.max(...allPts.map(p => p[1]));
+    }
+    const rx = Math.max(0, Math.min(1, (ev.clientX - rect.left) / Math.max(1, rect.width)));
+    const rz = Math.max(0, Math.min(1, (ev.clientY - rect.top) / Math.max(1, rect.height)));
+    const wx = Math.round((minX + rx * Math.max(1, maxX - minX)) * 10) / 10;
+    const wz = Math.round((minZ + rz * Math.max(1, maxZ - minZ)) * 10) / 10;
+    window.addCableWaypoint(wx, wz);
+  }, true);
+
   function renderCablesDrawer() {
     if (!window.monitsApi) return;
     const states = window.monitsApi.getStates();
@@ -956,7 +1114,47 @@
         `;
       }).join("");
     }
+    renderCableWaypoints();
+
+    const listEl = document.getElementById("existingCablesList");
+    const runs = window.monitsApi.getCableRuns?.() || [];
+    if (listEl) {
+      if (runs.length === 0) {
+        listEl.innerHTML = `<div style="font-size:0.74rem; color:#64748b;">${isId ? "Belum ada jalur kabel 3D." : "No 3D cable runs placed yet."}</div>`;
+      } else {
+        listEl.innerHTML = runs.map(c => {
+          const safeId = c.id.replace(/[^a-zA-Z0-9_]/g, "_");
+          return `
+            <div class="monits-card-row" style="gap:5px; align-items:center; flex-wrap:nowrap;">
+              <div style="flex:1; min-width:110px;">
+                <input id="inp_cable_name_${safeId}" type="text" class="monits-input" value="${String(c.name).replace(/"/g, "&quot;")}" style="width:100%; font-size:0.72rem; padding:3px 6px;" />
+                <div style="font-size:0.64rem; color:#94a3b8; margin-top:2px;">${c.type} · ${c.length}m · ${c.segments} seg</div>
+              </div>
+              <input id="inp_cable_y_${safeId}" type="number" step="0.05" value="${c.mount_y}" title="Elevation Y (m)" class="monits-input" style="width:58px; font-size:0.72rem; padding:3px 5px;" />
+              <button class="monits-pill-btn on" title="Save Cable Run" onclick="window.onSaveCableRun('${c.id}', '${safeId}')">💾</button>
+              <button class="monits-pill-btn" style="color:#f87171; border-color:rgba(248,113,113,0.35);" title="Delete Cable Run" onclick="window.onDeleteCableRun('${c.id}', '${String(c.name).replace(/'/g, "\\'")}')">🗑️</button>
+            </div>
+          `;
+        }).join("");
+      }
+    }
   }
+
+  window.onSaveCableRun = async function(groupId, safeId) {
+    if (!window.monitsApi) return;
+    const name = document.getElementById(`inp_cable_name_${safeId}`)?.value?.trim();
+    const mountY = document.getElementById(`inp_cable_y_${safeId}`)?.value;
+    await window.monitsApi.updateCableRun(groupId, { name, mountY });
+    renderCablesDrawer();
+  };
+
+  window.onDeleteCableRun = async function(groupId, name) {
+    if (!window.monitsApi) return;
+    const msg = isId ? `Hapus jalur kabel "${name}" dari 3D?` : `Delete cable run "${name}" from 3D?`;
+    if (!confirm(msg)) return;
+    await window.monitsApi.deleteCableRun(groupId);
+    renderCablesDrawer();
+  };
 
   window.onToggleCableLayer = async function(layerId) {
     if (!window.monitsApi) return;
@@ -975,6 +1173,7 @@
     const z1 = document.getElementById("cableZ1").value;
     const x2 = document.getElementById("cableX2").value;
     const z2 = document.getElementById("cableZ2").value;
+    const pts = [[Number(x1), Number(z1)], ...cableWaypoints, [Number(x2), Number(z2)]];
 
     const added = await window.monitsApi.addCableRunToPlan({
       cableType,
@@ -985,14 +1184,18 @@
       x1,
       z1,
       x2,
-      z2
+      z2,
+      points: pts
     });
 
     const msgEl = document.getElementById("cableStatusMsg");
     if (added && msgEl) {
+      cableWaypoints = [];
+      if (cablePickActive) window.toggleCablePointPicker();
       msgEl.textContent = isId
         ? `✓ Ditambahkan & Disimpan: ${added.name} (Elevasi Y=${added.mount_y}m)`
         : `✓ Added to 3D & Saved to DB: ${added.name} (Elevation Y=${added.mount_y}m)`;
+      renderCablesDrawer();
     }
   };
 

@@ -836,3 +836,26 @@ async def update_virtual_state(
 
     return {"status": "ok", "entity_id": data.entity_id, "state": data.state}
 
+
+@router.delete("/virtual/states/{entity_id:path}")
+async def delete_virtual_state(
+    entity_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Remove a virtual light/switch state from persisted SystemConfig."""
+    res = await db.execute(
+        select(SystemConfig).where(SystemConfig.key == "virtual_device_states")
+    )
+    cfg = res.scalar_one_or_none()
+    if cfg and cfg.value:
+        try:
+            states = json.loads(cfg.value)
+            if entity_id in states:
+                del states[entity_id]
+                cfg.value = json.dumps(states)
+                await db.commit()
+        except Exception:
+            pass
+    return {"status": "deleted", "entity_id": entity_id}
+

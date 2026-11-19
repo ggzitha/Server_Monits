@@ -1515,9 +1515,58 @@ export async function createNextFloorHass(options = {}) {
         const json = await res.json().catch(() => null);
         this._lastSqlSync = json?.sql_sync || null;
         activeSensorIdentifier = identifier;
+        if (name) {
+          const prevSensor = dbSensorsCache.find(s => s.identifier === identifier);
+          const prevName = prevSensor?.name;
+          const panel = window.nfPanel;
+          const curB = structuredClone(panel?.data?.building || building);
+          const linkedEids = new Set([
+            `sensor.${identifier}_temp`,
+            `sensor.${identifier}_humidity`,
+            `sensor.${identifier}_power`,
+            `sensor.${identifier}_ampere`,
+            `sensor.${identifier}_volt`
+          ]);
+          const linkedSuffixes = {
+            [`sensor.${identifier}_temp`]: "Temp",
+            [`sensor.${identifier}_humidity`]: "Humidity",
+            [`sensor.${identifier}_power`]: "Power",
+            [`sensor.${identifier}_ampere`]: "Current",
+            [`sensor.${identifier}_volt`]: "Voltage"
+          };
+          let renamed3d = false;
+          for (const fl of curB.floors || []) {
+            for (const p of fl.placements || []) {
+              if (p.entity_id && linkedSuffixes[p.entity_id]) {
+                const nextLabel = `${name} ${linkedSuffixes[p.entity_id]}`;
+                if (p.name !== nextLabel) {
+                  p.name = nextLabel;
+                  renamed3d = true;
+                }
+              }
+            }
+            for (const f of fl.furniture || []) {
+              const isMatch =
+                f.id === `sensor_unit_${identifier}` ||
+                f.id === identifier ||
+                (f.entity && linkedEids.has(f.entity)) ||
+                (prevName && f.name === prevName && String(f.type || "").includes("thermohygro"));
+              if (isMatch && f.name !== name) {
+                f.name = name;
+                renamed3d = true;
+              }
+            }
+          }
+          if (renamed3d) {
+            building = curB;
+            if (panel && panel.data) panel.data.edit(curB);
+            await this.saveBuildingNow(curB);
+          }
+        }
         await this.refreshSensorsFromDb();
         void fetchSensorHistory(identifier).then(() => pushHassToPanel());
         pushHassToPanel();
+        window.nfPanel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d")?.requestUpdate?.();
       } else {
         this._lastSqlSync = null;
       }
@@ -1629,22 +1678,25 @@ export async function createNextFloorHass(options = {}) {
         headers: { "X-CSRF-Token": getCsrfToken() }
       });
       if (res.ok) {
-        const tempId = `sensor.${identifier}_temp`;
-        const humId = `sensor.${identifier}_humidity`;
-        const pwrId = `sensor.${identifier}_power`;
-        delete entitiesMap[tempId];
-        delete entitiesMap[humId];
-        delete entitiesMap[pwrId];
-        delete statesMap[tempId];
-        delete statesMap[humId];
-        delete statesMap[pwrId];
+        const idsToRemove = [
+          `sensor.${identifier}_temp`,
+          `sensor.${identifier}_humidity`,
+          `sensor.${identifier}_power`,
+          `sensor.${identifier}_ampere`,
+          `sensor.${identifier}_volt`
+        ];
+        for (const eid of idsToRemove) {
+          delete entitiesMap[eid];
+          delete statesMap[eid];
+        }
+        delete sensorHistoryCache[identifier];
+        if (expandedSensorIdentifier === identifier) expandedSensorIdentifier = null;
+        if (activeSensorIdentifier === identifier) activeSensorIdentifier = null;
 
         const panel = window.nfPanel;
         const curB = structuredClone(panel?.data?.building || building);
         for (const fl of curB.floors || []) {
-          fl.placements = (fl.placements || []).filter(
-            p => p.entity_id !== tempId && p.entity_id !== humId && p.entity_id !== pwrId
-          );
+          fl.placements = (fl.placements || []).filter(p => !idsToRemove.includes(p.entity_id));
           fl.furniture = (fl.furniture || []).filter(f => f.id !== `sensor_unit_${identifier}`);
         }
         building = curB;
@@ -1653,6 +1705,7 @@ export async function createNextFloorHass(options = {}) {
         }
         await this.saveBuildingNow(curB);
         await this.refreshSensorsFromDb();
+        pushHassToPanel();
       }
       return res.ok;
     },
@@ -1674,21 +1727,125 @@ export async function createNextFloorHass(options = {}) {
         });
       }
     },
+    async addVirtualLight({ name, floorId, areaId, x, z, hexColor }) {
+      const cleanName = (name || "Room Light").trim();
+      const slug = cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `light_${Date.now().toString(36)}`;
+      const entityId = `light.${slug.slice(0, 48)}`;
+      const rgb = hexColor
+        ? [parseInt(hexColor.slice(1, 3), 16), parseInt(hexColor.slice(3, 5), 16), parseInt(hexColor.slice(5, 7), 16)]
+        : [255, 244, 214];
+      const px = Math.round(Number(x || 2.5) * 100) / 100;
+      const pz = Math.round(Number(z || 1.5) * 100) / 100;
+
+      entitiesMap[entityId] = { entity_id: entityId, area_id: areaId || "server_room", name: cleanName };
+      statesMap[entityId] = {
+        entity_id: entityId,
+        state: "on",
+        attributes: {
+          friendly_name: cleanName,
+          brightness: 220,
+          rgb_color: rgb,
+          supported_color_modes: ["rgb"]
+        }
+      };
+      await persistVirtualState(entityId, statesMap[entityId]);
+
+      const panel = window.nfPanel;
+      const curB = structuredClone(panel?.data?.building || building);
+      const targetFloor = (curB.floors || []).find(f => f.id === floorId) || (curB.floors || [])[0];
+      if (targetFloor) {
+        targetFloor.placements = (targetFloor.placements || []).filter(p => p.entity_id !== entityId);
+        targetFloor.placements.push({ entity_id: entityId, x: px, z: pz });
+        const lampId = `lamp_${slug}`;
+        targetFloor.furniture = (targetFloor.furniture || []).filter(f => f.id !== lampId && f.entity !== entityId);
+        targetFloor.furniture.push({
+          id: lampId,
+          type: "lamp_ceiling",
+          name: cleanName,
+          entity: entityId,
+          x: px,
+          z: pz,
+          w: 0.4,
+          d: 0.4,
+          h: 0.08,
+          mount_y: Math.max(2.2, (targetFloor.height || 3.0) - 0.12),
+          rotation: 0
+        });
+        building = curB;
+        if (panel && panel.data) panel.data.edit(curB);
+        await this.saveBuildingNow(curB);
+      }
+      pushHassToPanel();
+      return entityId;
+    },
+    async renameVirtualLight(entityId, newName) {
+      const cleanName = (newName || "").trim();
+      if (!cleanName || !statesMap[entityId]) return false;
+      statesMap[entityId] = {
+        ...statesMap[entityId],
+        attributes: { ...(statesMap[entityId].attributes || {}), friendly_name: cleanName }
+      };
+      if (entitiesMap[entityId]) entitiesMap[entityId].name = cleanName;
+      await persistVirtualState(entityId, statesMap[entityId]);
+
+      const panel = window.nfPanel;
+      const curB = structuredClone(panel?.data?.building || building);
+      let changed = false;
+      for (const fl of curB.floors || []) {
+        for (const p of fl.placements || []) {
+          if (p.entity_id === entityId && p.name !== cleanName) {
+            p.name = cleanName;
+            changed = true;
+          }
+        }
+        for (const f of fl.furniture || []) {
+          if (f.entity === entityId) {
+            f.name = cleanName;
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        building = curB;
+        if (panel && panel.data) panel.data.edit(curB);
+        await this.saveBuildingNow(curB);
+      }
+      pushHassToPanel();
+      return true;
+    },
+    async deleteVirtualLight(entityId) {
+      delete statesMap[entityId];
+      delete entitiesMap[entityId];
+      try {
+        await fetch(`/api/v1/sensors/virtual/states/${encodeURIComponent(entityId)}`, {
+          method: "DELETE",
+          headers: { "X-CSRF-Token": getCsrfToken() }
+        });
+      } catch (e) {}
+      const panel = window.nfPanel;
+      const curB = structuredClone(panel?.data?.building || building);
+      for (const fl of curB.floors || []) {
+        fl.placements = (fl.placements || []).filter(p => p.entity_id !== entityId);
+        fl.furniture = (fl.furniture || []).filter(f => f.entity !== entityId);
+      }
+      building = curB;
+      if (panel && panel.data) panel.data.edit(curB);
+      await this.saveBuildingNow(curB);
+      pushHassToPanel();
+      return true;
+    },
     async toggleLayer(layerEntityId) {
       await hass.callService("input_boolean", "toggle", { entity_id: layerEntityId });
     },
-    async addCableRunToPlan({ cableType, placementZone, customMountY, floorId, name, x1, z1, x2, z2, variant }) {
+    async addCableRunToPlan({ cableType, placementZone, customMountY, floorId, name, x1, z1, x2, z2, points, variant }) {
       const panel = window.nfPanel;
       const curB = structuredClone(panel?.data?.building || building);
       const targetFloor = (curB.floors || []).find(f => f.id === floorId) || (curB.floors || [])[0];
       if (!targetFloor) return false;
 
-      const dx = Number(x2) - Number(x1);
-      const dz = Number(z2) - Number(z1);
-      const length = Math.max(0.4, Math.round(Math.hypot(dx, dz) * 100) / 100);
-      const midX = Math.round(((Number(x1) + Number(x2)) / 2) * 100) / 100;
-      const midZ = Math.round(((Number(z1) + Number(z2)) / 2) * 100) / 100;
-      const angleDeg = Math.round((Math.atan2(dz, dx) * 180) / Math.PI);
+      const pts = Array.isArray(points) && points.length >= 2
+        ? points.map(pt => [Number(pt[0]), Number(pt[1])])
+        : [[Number(x1), Number(z1)], [Number(x2), Number(z2)]];
 
       let mountY = -0.22;
       if (placementZone === "below_floor") mountY = -0.22;
@@ -1699,60 +1856,111 @@ export async function createNextFloorHass(options = {}) {
       }
 
       const typeMap = {
-        power: {
-          type: "pack:dcim.facility:cable_power",
-          layer: "input_boolean.layer_cable_power",
-          d: 0.14,
-          h: 0.06,
-          defaultVariant: "red_hv"
-        },
-        fiber: {
-          type: "pack:dcim.facility:cable_fiber",
-          layer: "input_boolean.layer_cable_fiber",
-          d: 0.12,
-          h: 0.05,
-          defaultVariant: "aqua_om4"
-        },
-        ethernet: {
-          type: "pack:dcim.facility:cable_ethernet",
-          layer: "input_boolean.layer_cable_ethernet",
-          d: 0.10,
-          h: 0.05,
-          defaultVariant: "blue_cat6a"
-        },
-        tray: {
-          type: "pack:dcim.facility:cable_tray",
-          layer: "input_boolean.layer_cable_tray",
-          d: 0.45,
-          h: 0.08,
-          defaultVariant: "galvanized"
-        }
+        power: { type: "pack:dcim.facility:cable_power", layer: "input_boolean.layer_cable_power", d: 0.14, h: 0.06, defaultVariant: "red_hv" },
+        fiber: { type: "pack:dcim.facility:cable_fiber", layer: "input_boolean.layer_cable_fiber", d: 0.12, h: 0.05, defaultVariant: "aqua_om4" },
+        ethernet: { type: "pack:dcim.facility:cable_ethernet", layer: "input_boolean.layer_cable_ethernet", d: 0.10, h: 0.05, defaultVariant: "blue_cat6a" },
+        tray: { type: "pack:dcim.facility:cable_tray", layer: "input_boolean.layer_cable_tray", d: 0.45, h: 0.08, defaultVariant: "galvanized" }
       };
 
       const spec = typeMap[cableType] || typeMap.power;
-      const newCable = {
-        id: `cable_${cableType}_${Date.now().toString(36)}`,
-        type: spec.type,
-        name: name || `${cableType.toUpperCase()} (${length}m @ ${mountY}m)`,
-        show_name: true,
-        x: midX,
-        z: midZ,
-        w: length,
-        d: spec.d,
-        h: spec.h,
-        mount_y: mountY,
-        rotation: angleDeg,
-        variant: variant || spec.defaultVariant,
-        show_when: { entity: spec.layer }
-      };
+      const groupId = `cable_${cableType}_${Date.now().toString(36)}`;
+      let totalLen = 0;
+      const segments = [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [ax, az] = pts[i];
+        const [bx, bz] = pts[i + 1];
+        const dx = bx - ax;
+        const dz = bz - az;
+        const segLen = Math.max(0.2, Math.round(Math.hypot(dx, dz) * 100) / 100);
+        totalLen += segLen;
+        const midX = Math.round(((ax + bx) / 2) * 100) / 100;
+        const midZ = Math.round(((az + bz) / 2) * 100) / 100;
+        const angleDeg = Math.round((Math.atan2(dz, dx) * 180) / Math.PI);
+        segments.push({
+          id: i === 0 ? groupId : `${groupId}_s${i}`,
+          cable_group: groupId,
+          cable_points: pts,
+          type: spec.type,
+          name: "",
+          show_name: i === 0,
+          x: midX,
+          z: midZ,
+          w: segLen,
+          d: spec.d,
+          h: spec.h,
+          mount_y: mountY,
+          rotation: angleDeg,
+          variant: variant || spec.defaultVariant,
+          show_when: { entity: spec.layer }
+        });
+      }
+      totalLen = Math.round(totalLen * 100) / 100;
+      const label = name || `${cableType.toUpperCase()} (${totalLen}m @ ${mountY}m)`;
+      for (const seg of segments) seg.name = label;
 
-      targetFloor.furniture = [...(targetFloor.furniture || []), newCable];
+      targetFloor.furniture = [...(targetFloor.furniture || []), ...segments];
       building = curB;
       if (panel && panel.data) {
         panel.data.edit(curB);
       }
       await this.saveBuildingNow(curB);
-      return newCable;
+      return { id: groupId, name: label, mount_y: mountY, length: totalLen, segments: segments.length };
+    },
+    getCableRuns() {
+      const curB = window.nfPanel?.data?.building || building;
+      const groups = new Map();
+      for (const fl of curB?.floors || []) {
+        for (const f of fl.furniture || []) {
+          if (!String(f.type || "").includes("cable_")) continue;
+          const gid = f.cable_group || f.id;
+          if (!groups.has(gid)) {
+            groups.set(gid, {
+              id: gid,
+              floorId: fl.id,
+              name: f.name || gid,
+              type: String(f.type).split(":").pop(),
+              mount_y: f.mount_y ?? 0,
+              length: 0,
+              segments: 0
+            });
+          }
+          const g = groups.get(gid);
+          g.length = Math.round((g.length + Number(f.w || 0)) * 100) / 100;
+          g.segments += 1;
+        }
+      }
+      return [...groups.values()];
+    },
+    async updateCableRun(groupId, { name, mountY }) {
+      const panel = window.nfPanel;
+      const curB = structuredClone(panel?.data?.building || building);
+      let changed = false;
+      for (const fl of curB.floors || []) {
+        for (const f of fl.furniture || []) {
+          if ((f.cable_group || f.id) === groupId) {
+            if (name !== undefined && name.trim()) f.name = name.trim();
+            if (mountY !== undefined && mountY !== "" && Number.isFinite(Number(mountY))) f.mount_y = Number(mountY);
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        building = curB;
+        if (panel && panel.data) panel.data.edit(curB);
+        await this.saveBuildingNow(curB);
+      }
+      return changed;
+    },
+    async deleteCableRun(groupId) {
+      const panel = window.nfPanel;
+      const curB = structuredClone(panel?.data?.building || building);
+      for (const fl of curB.floors || []) {
+        fl.furniture = (fl.furniture || []).filter(f => (f.cable_group || f.id) !== groupId);
+      }
+      building = curB;
+      if (panel && panel.data) panel.data.edit(curB);
+      await this.saveBuildingNow(curB);
+      return true;
     }
   };
 

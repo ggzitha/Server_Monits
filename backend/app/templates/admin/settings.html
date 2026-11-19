@@ -121,7 +121,7 @@
       <label class="form-label">Telemetry Data Retention (Days)</label>
       <input type="number" id="retentionDays" class="form-control" min="1" max="3650" value="90">
       <span style="font-size: 0.75rem; color: var(--text-muted);">
-        Raw sensor readings older than this threshold will be pruned during scheduled housekeeping.
+        Applies to the app's own local database only (external MariaDB/MySQL/PostgreSQL sensor data sources are strictly read-only and are never modified or pruned).
       </span>
     </div>
 
