@@ -134,3 +134,74 @@ async def test_db_sensors_and_virtual_states(client, db_session):
     assert b_data["name"] == "Test Datacenter"
     assert b_data["building"]["floors"][0]["rooms"][0]["name"] == "Server Room Alpha"
 
+    # 7. Separated sensor types (ammeter, voltmeter, power_meter)
+    amp_res = await client.post(
+        "/api/v1/sensors/readings",
+        headers=admin_headers,
+        json={
+            "identifier": "pdu_a_ammeter",
+            "name": "PDU A Ammeter",
+            "sensor_type": "ammeter",
+            "area_id": "server_alpha",
+            "amperes": 14.5,
+        },
+    )
+    assert amp_res.status_code == 200
+
+    volt_res = await client.post(
+        "/api/v1/sensors/readings",
+        headers=admin_headers,
+        json={
+            "identifier": "pdu_a_voltmeter",
+            "name": "PDU A Voltmeter",
+            "sensor_type": "voltmeter",
+            "area_id": "server_alpha",
+            "volts": 229.4,
+        },
+    )
+    assert volt_res.status_code == 200
+
+    list_res3 = await client.get("/api/v1/sensors", headers=admin_headers)
+    by_id = {s["identifier"]: s for s in list_res3.json()}
+    assert by_id["pdu_a_ammeter"]["sensor_type"] == "ammeter"
+    assert by_id["pdu_a_ammeter"]["amperes"] == 14.5
+    assert by_id["pdu_a_ammeter"]["power_kw"] is None
+    assert by_id["pdu_a_voltmeter"]["sensor_type"] == "voltmeter"
+    assert by_id["pdu_a_voltmeter"]["volts"] == 229.4
+
+    # 8. Grafana-style read-only SQLite query-draft endpoint
+    import sqlite3, tempfile
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tf:
+        db_path = tf.name
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE rtime_suhu (Date_Time TEXT, Temperature REAL)")
+    conn.execute("INSERT INTO rtime_suhu VALUES ('2026-11-19 10:00:00', 22.4)")
+    conn.commit()
+    conn.close()
+
+    q_ok = await client.post(
+        "/api/v1/data-sources/query-draft",
+        headers=admin_headers,
+        params={"source_type": "sqlite", "database": db_path},
+        json={
+            "query": 'SELECT Date_Time AS "time", Temperature FROM rtime_suhu',
+            "format": "time_series",
+        },
+    )
+    assert q_ok.status_code == 200
+    q_data = q_ok.json()
+    assert q_data["row_count"] == 1
+    assert q_data["rows"][0]["Temperature"] == 22.4
+
+    q_bad = await client.post(
+        "/api/v1/data-sources/query-draft",
+        headers=admin_headers,
+        params={"source_type": "sqlite", "database": db_path},
+        json={
+            "query": "DELETE FROM rtime_suhu",
+            "format": "table",
+        },
+    )
+    assert q_bad.status_code == 400
+
+

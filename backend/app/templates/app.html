@@ -41,7 +41,7 @@
     background: #070b14;
   }
 
-  nextfloor-panel {
+  neonplan3d-panel, nextfloor-panel {
     width: 100%;
     height: 100%;
     display: flex;
@@ -194,15 +194,15 @@
     color: #94a3b8;
   }
 </style>
-<script src="/static/nextfloor/basic-types.js"></script>
-<script src="/static/nextfloor/pack-ids.js"></script>
-<script src="/static/nextfloor/pack-names.js"></script>
+<script src="/static/neonplan3d/basic-types.js"></script>
+<script src="/static/neonplan3d/pack-ids.js"></script>
+<script src="/static/neonplan3d/pack-names.js"></script>
 {% endblock %}
 
 {% block content %}
-<!-- Main Viewport Area (Single Integrated Header + 3D Stage + CAD Editor) -->
+<!-- Main Viewport Area (NeonPlan 3D v3.5.1 Header + 3D Stage + CAD Editor) -->
 <div class="monits-viewport-container">
-  <nextfloor-panel id="monitPanel"></nextfloor-panel>
+  <neonplan3d-panel id="monitPanel"></neonplan3d-panel>
 </div>
 
 <!-- Drawer 1: Place New Temp/Humidity Sensor, Edit DB Sensors & Virtual Lights -->
@@ -218,12 +218,23 @@
     <!-- Section 1: Add & Place New Temperature & Humidity Sensor at Specific Place -->
     <div style="background: rgba(8, 15, 30, 0.9); border: 1px solid rgba(0, 240, 255, 0.28); border-radius: 10px; padding: 10px 12px;">
       <h4 class="monits-section-title" style="margin-top:0;">
-        {{ '1. Tambah & Tempatkan Sensor Suhu / Kelembaban di Lokasi Spesifik' if current_lang == 'id' else '1. Add & Place Temp / Humidity Sensor at Specific Location' }}
+        {{ '1. Tambah & Tempatkan Sensor di Lokasi Spesifik' if current_lang == 'id' else '1. Add & Place Sensor at Specific Location' }}
       </h4>
       <div class="monits-form-grid">
         <label style="grid-column: span 2;">
           <span>{{ 'Nama Sensor' if current_lang == 'id' else 'Sensor Name' }}</span>
           <input id="newSensorName" type="text" placeholder="Rack A04 Cold Aisle Sensor" value="Rack A04 Cold Aisle" class="monits-input" />
+        </label>
+        <label style="grid-column: span 2;">
+          <span>{{ 'Tipe Sensor' if current_lang == 'id' else 'Sensor Type' }}</span>
+          <select id="newSensorType" class="monits-input" onchange="window.onNewSensorTypeChange(this.value)">
+            <option value="thermohygrometer">Thermohygrometer (°C + RH%)</option>
+            <option value="thermometer">Thermometer (°C)</option>
+            <option value="hygrometer">Hygrometer (RH%)</option>
+            <option value="power_meter">Power Meter (kW)</option>
+            <option value="ammeter">Amperemeter (A)</option>
+            <option value="voltmeter">Voltmeter (V)</option>
+          </select>
         </label>
         <label>
           <span>{{ 'Lantai' if current_lang == 'id' else 'Floor Level' }}</span>
@@ -244,13 +255,35 @@
           <span>{{ 'Tinggi Y (meter)' if current_lang == 'id' else 'Height Y (meters)' }}</span>
           <input id="newSensorY" type="number" step="0.1" value="1.5" class="monits-input" title="Mount Height Y (m)" />
         </label>
-        <label>
+        <label id="wrapNewSensorTemp">
           <span>{{ 'Suhu Awal (°C)' if current_lang == 'id' else 'Initial Temp (°C)' }}</span>
           <input id="newSensorTemp" type="number" step="0.1" value="21.5" class="monits-input" />
         </label>
-        <label>
+        <label id="wrapNewSensorHum">
           <span>{{ 'Kelembaban Awal (%RH)' if current_lang == 'id' else 'Initial Humidity (%RH)' }}</span>
           <input id="newSensorHum" type="number" step="0.5" value="45.0" class="monits-input" />
+        </label>
+        <label id="wrapNewSensorPower" style="display:none;">
+          <span>{{ 'Daya Awal (kW)' if current_lang == 'id' else 'Initial Power (kW)' }}</span>
+          <input id="newSensorPower" type="number" step="0.1" value="2.4" class="monits-input" />
+        </label>
+        <label id="wrapNewSensorAmp" style="display:none;">
+          <span>{{ 'Arus Awal (A)' if current_lang == 'id' else 'Initial Current (A)' }}</span>
+          <input id="newSensorAmp" type="number" step="0.1" value="12.5" class="monits-input" />
+        </label>
+        <label id="wrapNewSensorVolt" style="display:none;">
+          <span>{{ 'Tegangan Awal (V)' if current_lang == 'id' else 'Initial Voltage (V)' }}</span>
+          <input id="newSensorVolt" type="number" step="0.5" value="220.0" class="monits-input" />
+        </label>
+        <label style="grid-column: span 2;">
+          <span>{{ 'Sumber Data Grafana (Opsional)' if current_lang == 'id' else 'Grafana Data Source (Optional)' }}</span>
+          <select id="newSensorDataSource" class="monits-input">
+            <option value="">-- Local DB (Manual / API) --</option>
+          </select>
+        </label>
+        <label id="wrapNewSensorSql" style="grid-column: span 2;">
+          <span>{{ 'Query SQL (Opsional)' if current_lang == 'id' else 'SQL Query (Optional)' }}</span>
+          <textarea id="newSensorSqlQuery" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time" style="font-family:monospace; font-size:0.72rem;"></textarea>
         </label>
       </div>
       <button id="btnPlaceSensorIn3D" class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:7px;" onclick="window.handleAddAndPlaceSensor()">
@@ -262,7 +295,7 @@
     <!-- Section 2: Direct Sensor Readings from Database -->
     <div>
       <h4 class="monits-section-title">
-        {{ '2. Nilai Sensor Aktif di Database (Suhu °C / RH% / kW)' if current_lang == 'id' else '2. Live Database Sensors (°C / RH% / kW)' }}
+        {{ '2. Nilai Sensor Aktif di Database' if current_lang == 'id' else '2. Live Database Sensors' }}
       </h4>
       <div style="font-size: 0.72rem; color: #94a3b8; margin-bottom: 8px;">
         {{ 'Ubah nilai di bawah untuk menyimpan langsung ke database dan memperbarui peta panas 3D secara real-time:' if current_lang == 'id' else 'Edit values below to write directly to the database and update 3D room markers & heatmaps in real time:' }}
@@ -359,12 +392,12 @@
 </aside>
 
 <script type="module">
-  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261119a";
+  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261119f";
 
   const currentLang = "{{ current_lang|default('en') }}";
   const isId = currentLang === "id";
 
-  // Ensure 3D panel fills 100% of the viewport while keeping its native integrated .nf-header visible
+  // Ensure 3D panel fills 100% of the viewport while keeping NeonPlan 3D v3.5.1 .fp3d-header visible
   function styleIntegratedPanel() {
     const panel = document.getElementById("monitPanel");
     if (panel && panel.shadowRoot) {
@@ -378,7 +411,12 @@
             display: flex !important;
             flex-direction: column !important;
           }
-          .nf-header {
+          .fp3d-app {
+            height: 100vh !important;
+            display: flex !important;
+            flex-direction: column !important;
+          }
+          .fp3d-header {
             display: flex !important;
             align-items: center !important;
             gap: 8px !important;
@@ -387,7 +425,7 @@
             background: rgba(14, 21, 38, 0.96) !important;
             border-bottom: 1px solid rgba(0, 240, 255, 0.25) !important;
           }
-          .nf-body {
+          .fp3d-stage-wrap {
             flex: 1 !important;
             min-height: 0 !important;
             height: 100% !important;
@@ -500,33 +538,58 @@
     }
   };
 
+  window.onNewSensorTypeChange = function(sensorType) {
+    const t = (sensorType || "thermohygrometer").toLowerCase();
+    const show = (id, vis) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = vis ? "" : "none";
+    };
+    show("wrapNewSensorTemp", t === "thermohygrometer" || t === "thermometer");
+    show("wrapNewSensorHum", t === "thermohygrometer" || t === "hygrometer");
+    show("wrapNewSensorPower", t === "power_meter");
+    show("wrapNewSensorAmp", t === "ammeter");
+    show("wrapNewSensorVolt", t === "voltmeter");
+  };
+
   window.handleAddAndPlaceSensor = async function() {
     if (!window.monitsApi) return;
     const name = document.getElementById("newSensorName")?.value || "Rack Sensor";
+    const sensorType = document.getElementById("newSensorType")?.value || "thermohygrometer";
     const floorId = document.getElementById("newSensorFloor")?.value || "ground";
     const areaId = document.getElementById("newSensorRoom")?.value || "server_alpha";
     const x = document.getElementById("newSensorX")?.value || 3.5;
     const z = document.getElementById("newSensorZ")?.value || 2.4;
     const mountY = document.getElementById("newSensorY")?.value || 1.5;
-    const temperature = document.getElementById("newSensorTemp")?.value || 21.5;
-    const humidity = document.getElementById("newSensorHum")?.value || 45.0;
+    const temperature = document.getElementById("newSensorTemp")?.value;
+    const humidity = document.getElementById("newSensorHum")?.value;
+    const powerKw = document.getElementById("newSensorPower")?.value;
+    const amperes = document.getElementById("newSensorAmp")?.value;
+    const volts = document.getElementById("newSensorVolt")?.value;
+    const dataSourceId = document.getElementById("newSensorDataSource")?.value || null;
+    const sqlQuery = document.getElementById("newSensorSqlQuery")?.value?.trim() || null;
 
     const placed = await window.monitsApi.addAndPlaceSensorIn3D({
       name,
+      sensorType,
       floorId,
       areaId,
       x,
       z,
       mountY,
       temperature,
-      humidity
+      humidity,
+      powerKw,
+      amperes,
+      volts,
+      dataSourceId,
+      sqlQuery
     });
 
     const msgEl = document.getElementById("sensorPlaceStatusMsg");
     if (placed && msgEl) {
       msgEl.textContent = isId
-        ? `✓ Sensor "${placed.name}" ditempatkan di (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & tersimpan di DB!`
-        : `✓ Placed "${placed.name}" at (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & saved to DB!`;
+        ? `✓ Sensor "${placed.name}" (${sensorType}) ditempatkan di (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & tersimpan di DB!`
+        : `✓ Placed "${placed.name}" (${sensorType}) at (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & saved to DB!`;
       renderDevicesDrawer();
     }
   };
@@ -577,24 +640,92 @@
 
     const sensorsContainer = document.getElementById("dbSensorsList");
     const sensors = window.monitsApi.getSensors() || [];
+    const dsSelect = document.getElementById("newSensorDataSource");
+    if (dsSelect && dsSelect.options.length <= 1) {
+      fetch("/api/v1/data-sources").then(r => r.ok ? r.json() : []).then(list => {
+        if (!Array.isArray(list)) return;
+        dsSelect.innerHTML = `<option value="">-- Local DB (Manual / API) --</option>` +
+          list.map(d => `<option value="${d.id}">${d.name} (${d.source_type})</option>`).join("");
+      }).catch(() => {});
+    }
+
+    const typeLabels = {
+      thermohygrometer: "Thermohygrometer (°C / RH%)",
+      thermometer: "Thermometer (°C)",
+      hygrometer: "Hygrometer (RH%)",
+      power_meter: "Power Meter (kW)",
+      ammeter: "Amperemeter (A)",
+      voltmeter: "Voltmeter (V)"
+    };
+
     if (sensorsContainer) {
       sensorsContainer.innerHTML = sensors.map(s => {
+        const sType = (s.sensor_type || "thermohygrometer").toLowerCase();
         const coordsLabel = (s.placement_x !== null && s.placement_x !== undefined)
           ? ` · (${s.placement_x}m, ${s.placement_z}m)`
           : "";
-        return `
-          <div class="monits-sensor-grid" style="grid-template-columns: 1fr 58px 58px 54px auto auto;">
-            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" title="${s.name} (Click to show 3D Gauge & 24h Chart)" onclick="window.onFocusSensorCard('${s.identifier}')">
-              <strong style="color:#e2e8f0;">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
-              <div style="font-size:0.68rem; color:#38bdf8;">${s.area_id}${coordsLabel}</div>
+        let fieldsHtml = "";
+        let cols = "1fr 64px auto auto";
+        if (sType === "thermohygrometer") {
+          cols = "1fr 62px 62px auto auto";
+          fieldsHtml = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.62rem; color:#94a3b8;">°C</span>
+              <input id="inp_t_${s.identifier}" type="number" step="0.1" class="monits-input" value="${s.current_temperature ?? 22.0}" title="Temperature (°C)" />
             </div>
-            <input id="inp_t_${s.identifier}" type="number" step="0.1" class="monits-input" value="${s.current_temperature ?? 22.0}" title="Temperature (°C)" />
-            <input id="inp_h_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.current_humidity ?? 45.0}" title="Humidity (%RH)" />
-            <input id="inp_p_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.power_kw ?? 15.0}" title="Power (kW)" />
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.62rem; color:#94a3b8;">RH%</span>
+              <input id="inp_h_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.current_humidity ?? 45.0}" title="Humidity (%RH)" />
+            </div>
+          `;
+        } else if (sType === "thermometer") {
+          fieldsHtml = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.62rem; color:#94a3b8;">°C</span>
+              <input id="inp_t_${s.identifier}" type="number" step="0.1" class="monits-input" value="${s.current_temperature ?? 22.0}" title="Temperature (°C)" />
+            </div>
+          `;
+        } else if (sType === "hygrometer") {
+          fieldsHtml = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.62rem; color:#94a3b8;">RH%</span>
+              <input id="inp_h_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.current_humidity ?? 45.0}" title="Humidity (%RH)" />
+            </div>
+          `;
+        } else if (sType === "power_meter") {
+          fieldsHtml = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.62rem; color:#94a3b8;">kW</span>
+              <input id="inp_p_${s.identifier}" type="number" step="0.1" class="monits-input" value="${s.power_kw ?? 1.5}" title="Power (kW)" />
+            </div>
+          `;
+        } else if (sType === "ammeter") {
+          fieldsHtml = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.62rem; color:#94a3b8;">A</span>
+              <input id="inp_a_${s.identifier}" type="number" step="0.1" class="monits-input" value="${s.amperes ?? 12.0}" title="Current (A)" />
+            </div>
+          `;
+        } else if (sType === "voltmeter") {
+          fieldsHtml = `
+            <div style="display:flex; flex-direction:column; gap:2px;">
+              <span style="font-size:0.62rem; color:#94a3b8;">V</span>
+              <input id="inp_v_${s.identifier}" type="number" step="0.5" class="monits-input" value="${s.volts ?? 220.0}" title="Voltage (V)" />
+            </div>
+          `;
+        }
+        return `
+          <div class="monits-sensor-grid" style="grid-template-columns: ${cols}; align-items:end;">
+            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" title="${s.name} · ${typeLabels[sType] || sType}" onclick="window.onFocusSensorCard('${s.identifier}')">
+              <strong style="color:#e2e8f0;">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
+              <div style="font-size:0.66rem; color:#38bdf8;">${s.area_id}${coordsLabel}</div>
+              <div style="font-size:0.62rem; color:#94a3b8;">${typeLabels[sType] || sType}</div>
+            </div>
+            ${fieldsHtml}
             <button class="monits-pill-btn" title="Show 3D Gauge & 24h Chart" onclick="window.onFocusSensorCard('${s.identifier}')">
               📈
             </button>
-            <button class="monits-pill-btn on" title="Save to Database" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}')">
+            <button class="monits-pill-btn on" title="Save to Database" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}', '${sType}')">
               💾
             </button>
           </div>
@@ -606,7 +737,7 @@
   window.onFocusSensorCard = function(identifier) {
     if (!window.monitsApi) return;
     window.monitsApi.setActiveSensor(identifier);
-    const v3d = document.getElementById("monitPanel")?.shadowRoot?.querySelector("nf-view3d");
+    const v3d = document.getElementById("monitPanel")?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
     if (v3d) {
       v3d._liveCardOn = true;
       v3d._houseFolded = false;
@@ -630,17 +761,22 @@
     renderDevicesDrawer();
   };
 
-  window.onSaveDbSensor = async function(identifier, areaId) {
+  window.onSaveDbSensor = async function(identifier, areaId, sensorType) {
     if (!window.monitsApi) return;
     const t = document.getElementById(`inp_t_${identifier}`)?.value;
     const h = document.getElementById(`inp_h_${identifier}`)?.value;
     const p = document.getElementById(`inp_p_${identifier}`)?.value;
+    const a = document.getElementById(`inp_a_${identifier}`)?.value;
+    const v = document.getElementById(`inp_v_${identifier}`)?.value;
     await window.monitsApi.pushDbSensorReading({
       identifier,
       area_id: areaId,
+      sensor_type: sensorType,
       temperature: t,
       humidity: h,
-      power_kw: p
+      power_kw: p,
+      amperes: a,
+      volts: v
     });
     renderDevicesDrawer();
   };
@@ -749,7 +885,7 @@
 
   async function init() {
     try {
-      await import("/static/nextfloor/nextfloor.js?v=20261119a");
+      await import("/static/neonplan3d/neonplan3d.js?v=20261119e");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {

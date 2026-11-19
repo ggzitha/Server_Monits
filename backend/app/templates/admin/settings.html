@@ -151,6 +151,115 @@
     </div>
   </div>
 
+  <!-- Grafana-Style Data Sources -->
+  <div class="card" style="margin-bottom: 1.5rem;" id="dataSourcesCard">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+      <div>
+        <h3 style="color: var(--accent-cyan); font-size: 1.1rem; margin: 0;">Data Sources</h3>
+        <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+          View and manage your connected SQL &amp; telemetry data source connections (MySQL, PostgreSQL, SQLite, MQTT, HTTP).
+        </div>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" onclick="toggleAddDataSourceForm()">+ Add new data source</button>
+    </div>
+
+    <!-- Add Data Source Form -->
+    <div id="addDataSourceForm" style="display: none; background: rgba(7, 11, 20, 0.75); border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; margin-bottom: 1rem;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+        <div class="form-group">
+          <label class="form-label">Name</label>
+          <input type="text" id="dsName" class="form-control" placeholder="e.g. MySQL Sensor DB">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select id="dsType" class="form-control" onchange="onDsTypeChange(this.value)">
+            <option value="mysql">MySQL</option>
+            <option value="postgresql">PostgreSQL</option>
+            <option value="sqlite">SQLite</option>
+            <option value="http_poll">HTTP Poll</option>
+            <option value="mqtt">MQTT</option>
+            <option value="webhook">Webhook</option>
+            <option value="manual_csv">Manual CSV</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="dsSqlFields" style="display: grid; grid-template-columns: 2fr 1fr 1.5fr; gap: 0.75rem;">
+        <div class="form-group" id="dsHostWrap">
+          <label class="form-label">Host / Path</label>
+          <input type="text" id="dsHost" class="form-control" placeholder="10.101.0.1">
+        </div>
+        <div class="form-group" id="dsPortWrap">
+          <label class="form-label">Port</label>
+          <input type="number" id="dsPort" class="form-control" value="3306">
+        </div>
+        <div class="form-group" id="dsDbWrap">
+          <label class="form-label">Database</label>
+          <input type="text" id="dsDatabase" class="form-control" placeholder="telemetry">
+        </div>
+        <div class="form-group" id="dsUserWrap">
+          <label class="form-label">User</label>
+          <input type="text" id="dsUsername" class="form-control" placeholder="grafana_reader">
+        </div>
+        <div class="form-group" id="dsPassWrap">
+          <label class="form-label">Password</label>
+          <input type="password" id="dsPassword" class="form-control" placeholder="••••••••">
+        </div>
+        <div class="form-group" id="dsUrlWrap" style="display: none; grid-column: span 3;">
+          <label class="form-label">Endpoint URL / File Path</label>
+          <input type="text" id="dsUrl" class="form-control" placeholder="http://127.0.0.1:8080/metrics or ./server_monits_dev.db">
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem;">
+        <button type="button" class="btn btn-sm" onclick="toggleAddDataSourceForm()">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="handleCreateDataSource()">Save &amp; Add Data Source</button>
+      </div>
+      <div id="dsCreateMsg" style="font-size: 0.78rem; margin-top: 0.5rem;"></div>
+    </div>
+
+    <div style="margin-bottom: 0.75rem;">
+      <input type="text" id="dsSearchInput" class="form-control" placeholder="Search by name or type..." oninput="renderDataSourcesList()">
+    </div>
+
+    <div id="dataSourcesList" style="display: flex; flex-direction: column; gap: 0.6rem;">
+      <div style="color: var(--text-muted); font-size: 0.85rem;">Loading data sources...</div>
+    </div>
+  </div>
+
+  <!-- Grafana-Style SQL Query Runner / Explore -->
+  <div class="card" style="margin-bottom: 1.5rem;" id="sqlExplorerCard">
+    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
+      <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Data source</span>
+        <select id="explorerDsSelect" class="form-control" style="width: auto; min-width: 190px; padding: 0.35rem 0.6rem;">
+          <option value="">-- Select SQL Data Source --</option>
+        </select>
+        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Format:</span>
+        <select id="explorerFormat" class="form-control" style="width: auto; padding: 0.35rem 0.6rem;">
+          <option value="time_series">Time series</option>
+          <option value="table">Table</option>
+        </select>
+        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Range:</span>
+        <select id="explorerHours" class="form-control" style="width: auto; padding: 0.35rem 0.6rem;">
+          <option value="1">Last 1h</option>
+          <option value="6">Last 6h</option>
+          <option value="24" selected>Last 24h</option>
+          <option value="168">Last 7d</option>
+        </select>
+      </div>
+      <button type="button" class="btn btn-primary btn-sm" id="btnRunSqlQuery" onclick="handleRunExplorerQuery()">
+        ▶ Run query
+      </button>
+    </div>
+
+    <textarea id="explorerSqlInput" rows="6" class="form-control" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.84rem; line-height: 1.45; background: #070b14; color: #e2e8f0; border-color: rgba(0, 240, 255, 0.3);" placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time">SELECT recorded_at AS "time", temperature, humidity FROM sensor_readings WHERE recorded_at BETWEEN $__timeFrom() AND $__timeTo() ORDER BY recorded_at DESC LIMIT 50</textarea>
+
+    <div id="explorerStatus" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
+    <div id="explorerChartWrap" style="display: none; margin-top: 0.75rem; padding: 0.75rem; border-radius: 8px; background: rgba(7, 11, 20, 0.7); border: 1px solid rgba(0, 240, 255, 0.2);"></div>
+    <div id="explorerTableWrap" style="margin-top: 0.75rem; overflow-x: auto;"></div>
+  </div>
+
   <!-- Save Button -->
   <div style="display: flex; justify-content: flex-end; gap: 1rem;">
     <button type="button" class="btn btn-primary" id="btnSaveSettings" onclick="handleSaveAllSettings(event)" style="min-width: 140px;">
@@ -401,7 +510,244 @@
     }
   }
 
+  // ── Grafana-style Data Sources & SQL Explorer ──────────────────────────────
+  let cachedDataSources = [];
+
+  function toggleAddDataSourceForm() {
+    const el = document.getElementById('addDataSourceForm');
+    if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  }
+
+  function onDsTypeChange(type) {
+    const isSqlServer = type === 'mysql' || type === 'postgresql';
+    const isSqlite = type === 'sqlite';
+    const isHttp = type === 'http_poll' || type === 'webhook' || type === 'mqtt' || type === 'manual_csv';
+    document.getElementById('dsHostWrap').style.display = isSqlServer ? '' : 'none';
+    document.getElementById('dsPortWrap').style.display = isSqlServer ? '' : 'none';
+    document.getElementById('dsDbWrap').style.display = isSqlServer ? '' : 'none';
+    document.getElementById('dsUserWrap').style.display = isSqlServer ? '' : 'none';
+    document.getElementById('dsPassWrap').style.display = isSqlServer ? '' : 'none';
+    document.getElementById('dsUrlWrap').style.display = (isSqlite || isHttp) ? '' : 'none';
+    if (type === 'mysql') document.getElementById('dsPort').value = '3306';
+    if (type === 'postgresql') document.getElementById('dsPort').value = '5432';
+  }
+
+  async function loadDataSources() {
+    try {
+      const res = await fetch('/api/v1/data-sources');
+      if (!res.ok) return;
+      cachedDataSources = await res.json();
+      renderDataSourcesList();
+      const sel = document.getElementById('explorerDsSelect');
+      if (sel) {
+        const prev = sel.value;
+        sel.innerHTML = '<option value="">-- Select SQL Data Source --</option>' +
+          cachedDataSources.map(d => `<option value="${d.id}">${d.name} (${d.source_type})</option>`).join('');
+        if (prev && cachedDataSources.some(d => String(d.id) === String(prev))) {
+          sel.value = prev;
+        } else if (cachedDataSources.length > 0) {
+          const sqlDs = cachedDataSources.find(d => ['mysql', 'postgresql', 'sqlite'].includes(d.source_type)) || cachedDataSources[0];
+          sel.value = String(sqlDs.id);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load data sources:', e);
+    }
+  }
+
+  function renderDataSourcesList() {
+    const wrap = document.getElementById('dataSourcesList');
+    if (!wrap) return;
+    const q = (document.getElementById('dsSearchInput')?.value || '').trim().toLowerCase();
+    const list = cachedDataSources.filter(d => !q || d.name.toLowerCase().includes(q) || d.source_type.toLowerCase().includes(q));
+    if (list.length === 0) {
+      wrap.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No data sources configured yet. Click "+ Add new data source" above.</div>';
+      return;
+    }
+    wrap.innerHTML = list.map(d => {
+      const cfg = d.config || {};
+      const endpoint = cfg.host ? `${cfg.host}${cfg.port ? ':' + cfg.port : ''}${cfg.database ? '/' + cfg.database : ''}` : (cfg.path || cfg.database || cfg.url || 'configured');
+      return `
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; padding:0.75rem 0.9rem; border-radius:8px; background:rgba(7,11,20,0.65); border:1px solid var(--border-color);">
+          <div>
+            <div style="font-weight:600; color:var(--text-main);">${d.name}</div>
+            <div style="font-size:0.76rem; color:var(--text-muted);">
+              <span style="color:var(--accent-cyan); text-transform:uppercase;">${d.source_type}</span> · ${endpoint}
+            </div>
+          </div>
+          <div style="display:flex; gap:0.45rem; align-items:center;">
+            <button type="button" class="btn btn-sm" onclick="focusExplorerDs(${d.id})">Explore</button>
+            <button type="button" class="btn btn-sm" onclick="testExistingDataSource(${d.id}, this)">Test</button>
+            <button type="button" class="btn btn-sm" style="color:#ff5566; border-color:rgba(255,51,68,0.35);" onclick="deleteExistingDataSource(${d.id})">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function focusExplorerDs(id) {
+    const sel = document.getElementById('explorerDsSelect');
+    if (sel) sel.value = String(id);
+    document.getElementById('sqlExplorerCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function handleCreateDataSource() {
+    const name = document.getElementById('dsName').value.trim();
+    const type = document.getElementById('dsType').value;
+    const msg = document.getElementById('dsCreateMsg');
+    if (!name) {
+      msg.style.color = '#ef4444';
+      msg.innerText = 'Please enter a Data Source name.';
+      return;
+    }
+    const config = {};
+    if (type === 'mysql' || type === 'postgresql') {
+      config.host = document.getElementById('dsHost').value.trim();
+      config.port = Number(document.getElementById('dsPort').value || (type === 'mysql' ? 3306 : 5432));
+      config.database = document.getElementById('dsDatabase').value.trim();
+      config.username = document.getElementById('dsUsername').value.trim();
+      config.password = document.getElementById('dsPassword').value;
+    } else if (type === 'sqlite') {
+      config.path = document.getElementById('dsUrl').value.trim() || './server_monits_dev.db';
+    } else {
+      config.url = document.getElementById('dsUrl').value.trim();
+    }
+    const res = await fetch('/api/v1/data-sources', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+      body: JSON.stringify({ name, source_type: type, config, is_active: true })
+    });
+    if (res.ok) {
+      msg.style.color = '#10b981';
+      msg.innerText = '✓ Data source saved.';
+      await loadDataSources();
+      toggleAddDataSourceForm();
+    } else {
+      const err = await res.json().catch(() => ({}));
+      msg.style.color = '#ef4444';
+      msg.innerText = `✕ ${err.detail || 'Failed to create data source'}`;
+    }
+  }
+
+  async function testExistingDataSource(id, btn) {
+    const prev = btn.innerText;
+    btn.disabled = true;
+    btn.innerText = 'Testing...';
+    try {
+      const res = await fetch(`/api/v1/data-sources/${id}/test`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': getCsrfToken() }
+      });
+      const data = await res.json();
+      const ok = Boolean(data.success ?? data.ok);
+      document.getElementById('explorerStatus').innerText = `${ok ? '✓' : '✕'} ${data.message || data.error || ''}`;
+      document.getElementById('explorerStatus').style.color = ok ? '#10b981' : '#ef4444';
+    } finally {
+      btn.disabled = false;
+      btn.innerText = prev;
+    }
+  }
+
+  async function deleteExistingDataSource(id) {
+    const res = await fetch(`/api/v1/data-sources/${id}`, {
+      method: 'DELETE',
+      headers: { 'X-CSRF-Token': getCsrfToken() }
+    });
+    if (res.ok) await loadDataSources();
+  }
+
+  async function handleRunExplorerQuery() {
+    const dsId = document.getElementById('explorerDsSelect').value;
+    const query = document.getElementById('explorerSqlInput').value;
+    const format = document.getElementById('explorerFormat').value;
+    const hours_back = Number(document.getElementById('explorerHours').value || 24);
+    const status = document.getElementById('explorerStatus');
+    const chartWrap = document.getElementById('explorerChartWrap');
+    const tableWrap = document.getElementById('explorerTableWrap');
+    const btn = document.getElementById('btnRunSqlQuery');
+
+    if (!dsId) {
+      status.style.color = '#ef4444';
+      status.innerText = '✕ Please select or add a Data Source first.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerText = 'Running...';
+    status.style.color = 'var(--text-muted)';
+    status.innerText = 'Executing read-only SQL query...';
+    chartWrap.style.display = 'none';
+    tableWrap.innerHTML = '';
+
+    try {
+      const res = await fetch(`/api/v1/data-sources/${dsId}/query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
+        body: JSON.stringify({ query, format, hours_back, limit: 200 })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        status.style.color = '#ef4444';
+        status.innerText = `✕ ${data.detail || 'Query failed'}`;
+        return;
+      }
+
+      status.style.color = '#10b981';
+      status.innerText = `✓ Returned ${data.row_count} row(s) (${data.format}) · Columns: ${(data.columns || []).join(', ')}`;
+
+      // Render SVG sparkline for time_series when numeric column exists
+      if (data.format === 'time_series' && Array.isArray(data.rows) && data.rows.length > 1) {
+        const cols = data.columns || [];
+        const numCol = cols.find(c => c.toLowerCase() !== 'time' && typeof data.rows[0][c] === 'number');
+        if (numCol) {
+          const vals = data.rows.map(r => Number(r[numCol])).filter(v => Number.isFinite(v));
+          if (vals.length > 1) {
+            const minV = Math.min(...vals), maxV = Math.max(...vals);
+            const span = maxV - minV || 1;
+            const w = 720, h = 110;
+            const pts = vals.map((v, i) => {
+              const x = Math.round((i / (vals.length - 1)) * (w - 20) + 10);
+              const y = Math.round(h - 14 - ((v - minV) / span) * (h - 28));
+              return `${x},${y}`;
+            }).join(' ');
+            chartWrap.style.display = 'block';
+            chartWrap.innerHTML = `
+              <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">
+                <span style="color:var(--accent-cyan); font-weight:600;">${numCol}</span>
+                <span>min ${minV.toFixed(2)} · max ${maxV.toFixed(2)}</span>
+              </div>
+              <svg viewBox="0 0 ${w} ${h}" style="width:100%; height:110px; display:block;">
+                <polyline fill="none" stroke="#00f0ff" stroke-width="2.2" points="${pts}" />
+              </svg>
+            `;
+          }
+        }
+      }
+
+      if (Array.isArray(data.rows) && data.rows.length > 0) {
+        const cols = data.columns || Object.keys(data.rows[0]);
+        tableWrap.innerHTML = `
+          <table class="data-table">
+            <thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
+            <tbody>
+              ${data.rows.slice(0, 50).map(r => `<tr>${cols.map(c => `<td>${r[c] ?? ''}</td>`).join('')}</tr>`).join('')}
+            </tbody>
+          </table>
+        `;
+      } else {
+        tableWrap.innerHTML = '<div style="color:var(--text-muted); font-size:0.82rem;">Query returned 0 rows.</div>';
+      }
+    } catch (err) {
+      status.style.color = '#ef4444';
+      status.innerText = `✕ ${err.message}`;
+    } finally {
+      btn.disabled = false;
+      btn.innerText = '▶ Run query';
+    }
+  }
+
   loadSettings();
+  loadDataSources();
   updateMqttStatus();
   mqttPollTimer = setInterval(updateMqttStatus, 5000);
 </script>

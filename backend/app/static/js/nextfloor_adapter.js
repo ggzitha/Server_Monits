@@ -5,7 +5,7 @@ import {
   DEMO_ENTITIES,
   DEMO_STATES,
   DEMO_PICTURES
-} from "/static/nextfloor/demo-data.js";
+} from "/static/neonplan3d/demo-data.js";
 
 // =========================================================================
 // 1. OUTBOUND NETWORK FIREWALL: ZERO EXTERNAL CALLS / 100% AIR-GAPPED
@@ -66,8 +66,8 @@ export async function createNextFloorHass(options = {}) {
   // Preload translation tables directly into runtime to eliminate any German fallback
   try {
     const [enRes, idRes] = await Promise.all([
-      fetch("/static/nextfloor/lang/en.json"),
-      fetch("/static/nextfloor/lang/id.json")
+      fetch("/static/neonplan3d/lang/en.json"),
+      fetch("/static/neonplan3d/lang/id.json")
     ]);
     const enTexts = enRes.ok ? await enRes.json() : {};
     const idTexts = idRes.ok ? await idRes.json() : {};
@@ -157,6 +157,7 @@ export async function createNextFloorHass(options = {}) {
   let statesMap = structuredClone(DEMO_STATES);
   let sensorHistoryCache = {}; // identifier -> { readings: [...], tempSeries: [...], humSeries: [...] }
   let activeSensorIdentifier = "server_alpha_env";
+  let expandedSensorIdentifier = null; // null = all cards show compact Gauges-only mode; identifier = that card shows full Gauges + Readings + 24h Chart below
 
   function build24hSeriesForSensor(s, dbReadings = []) {
     const baseT = Number(s?.current_temperature ?? 21.5);
@@ -238,12 +239,15 @@ export async function createNextFloorHass(options = {}) {
   // Sync live sensors directly from the SQLite/PostgreSQL database (/api/v1/sensors)
   function applyDbSensorToState(s) {
     const ident = s.identifier;
+    const sType = s.sensor_type || "thermohygrometer";
     const areaId = s.area_id || "server_alpha";
     const tempId = `sensor.${ident}_temp`;
     const humId = `sensor.${ident}_humidity`;
     const pwrId = `sensor.${ident}_power`;
+    const ampId = `sensor.${ident}_ampere`;
+    const voltId = `sensor.${ident}_volt`;
 
-    if (s.current_temperature !== null && s.current_temperature !== undefined) {
+    if ((sType === "thermohygrometer" || sType === "thermometer") && s.current_temperature !== null && s.current_temperature !== undefined) {
       entitiesMap[tempId] = { entity_id: tempId, name: `${s.name} Temp`, area_id: areaId };
       statesMap[tempId] = {
         entity_id: tempId,
@@ -258,7 +262,7 @@ export async function createNextFloorHass(options = {}) {
       };
     }
 
-    if (s.current_humidity !== null && s.current_humidity !== undefined) {
+    if ((sType === "thermohygrometer" || sType === "hygrometer") && s.current_humidity !== null && s.current_humidity !== undefined) {
       entitiesMap[humId] = { entity_id: humId, name: `${s.name} Humidity`, area_id: areaId };
       statesMap[humId] = {
         entity_id: humId,
@@ -273,7 +277,7 @@ export async function createNextFloorHass(options = {}) {
       };
     }
 
-    if (s.power_kw !== null && s.power_kw !== undefined) {
+    if (sType === "power_meter" && s.power_kw !== null && s.power_kw !== undefined) {
       entitiesMap[pwrId] = { entity_id: pwrId, name: `${s.name} Power`, area_id: areaId };
       statesMap[pwrId] = {
         entity_id: pwrId,
@@ -281,7 +285,37 @@ export async function createNextFloorHass(options = {}) {
         attributes: {
           device_class: "power",
           unit_of_measurement: "kW",
-          friendly_name: `${s.name} Load`,
+          friendly_name: `${s.name} Power`,
+          status: s.status || "online",
+          db_identifier: ident
+        }
+      };
+    }
+
+    if (sType === "ammeter" && s.amperes !== null && s.amperes !== undefined) {
+      entitiesMap[ampId] = { entity_id: ampId, name: `${s.name} Current`, area_id: areaId };
+      statesMap[ampId] = {
+        entity_id: ampId,
+        state: String(s.amperes),
+        attributes: {
+          device_class: "current",
+          unit_of_measurement: "A",
+          friendly_name: `${s.name} Current`,
+          status: s.status || "online",
+          db_identifier: ident
+        }
+      };
+    }
+
+    if (sType === "voltmeter" && s.volts !== null && s.volts !== undefined) {
+      entitiesMap[voltId] = { entity_id: voltId, name: `${s.name} Voltage`, area_id: areaId };
+      statesMap[voltId] = {
+        entity_id: voltId,
+        state: String(s.volts),
+        attributes: {
+          device_class: "voltage",
+          unit_of_measurement: "V",
+          friendly_name: `${s.name} Voltage`,
           status: s.status || "online",
           db_identifier: ident
         }
@@ -301,13 +335,20 @@ export async function createNextFloorHass(options = {}) {
         const pz = Number(s.placement_z);
         const py = s.placement_y !== null && s.placement_y !== undefined ? Number(s.placement_y) : 1.5;
 
-        const existingTemp = targetFloor.placements.find(p => p.entity_id === tempId);
-        if (!existingTemp) {
+        if ((sType === "thermohygrometer" || sType === "thermometer") && !targetFloor.placements.some(p => p.entity_id === tempId)) {
           targetFloor.placements.push({ entity_id: tempId, x: px, z: pz });
         }
-        const existingHum = targetFloor.placements.find(p => p.entity_id === humId);
-        if (!existingHum) {
-          targetFloor.placements.push({ entity_id: humId, x: Math.round((px + 0.35) * 100) / 100, z: pz });
+        if ((sType === "thermohygrometer" || sType === "hygrometer") && !targetFloor.placements.some(p => p.entity_id === humId)) {
+          targetFloor.placements.push({ entity_id: humId, x: Math.round((px + (sType === "thermohygrometer" ? 0.35 : 0)) * 100) / 100, z: pz });
+        }
+        if (sType === "power_meter" && !targetFloor.placements.some(p => p.entity_id === pwrId)) {
+          targetFloor.placements.push({ entity_id: pwrId, x: px, z: pz });
+        }
+        if (sType === "ammeter" && !targetFloor.placements.some(p => p.entity_id === ampId)) {
+          targetFloor.placements.push({ entity_id: ampId, x: px, z: pz });
+        }
+        if (sType === "voltmeter" && !targetFloor.placements.some(p => p.entity_id === voltId)) {
+          targetFloor.placements.push({ entity_id: voltId, x: px, z: pz });
         }
         targetFloor.furniture = targetFloor.furniture || [];
         const unitId = `sensor_unit_${ident}`;
@@ -373,7 +414,7 @@ export async function createNextFloorHass(options = {}) {
     if (window.nfPanel) {
       window.nfPanel.hass = { ...hass, states: hass.states, entities: hass.entities, areas: hass.areas };
       window.nfPanel.requestUpdate();
-      const v3d = window.nfPanel.shadowRoot?.querySelector("nf-view3d");
+      const v3d = window.nfPanel.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
       if (v3d && typeof v3d.syncDevices === "function") {
         v3d.syncDevices(true);
         v3d.requestUpdate();
@@ -515,6 +556,7 @@ export async function createNextFloorHass(options = {}) {
       tempPts: hist.tempPts,
       humPts: hist.humPts,
       curves: hist.curves,
+      expanded: s.identifier === expandedSensorIdentifier,
       indexLabel: `${index + 1}/${total}`
     };
   }
@@ -597,7 +639,18 @@ export async function createNextFloorHass(options = {}) {
     async callWS(msg) {
       const type = msg.type || "";
 
-      // 1. Building Persistence
+      // 1. Building & Plans Persistence (NeonPlan 3D v3.5.1 + NextFloor)
+      if (type === "neonplan3d/plans/list" || type === "nextfloor/plans/list") {
+        const flCount = building?.floors?.length ?? 0;
+        const rmCount = building?.floors?.reduce((n, f) => n + (f.rooms?.length ?? 0), 0) ?? 0;
+        const fnCount = building?.floors?.reduce((n, f) => n + (f.furniture?.length ?? 0), 0) ?? 0;
+        return {
+          plans: [{ ...mainEntry, revision, floors: flCount, rooms: rmCount, furniture: fnCount }],
+          trash: [],
+          locate_plan: "main"
+        };
+      }
+
       if (type === "nextfloor/building/get" || type === "neonplan3d/building/get") {
         return {
           building: structuredClone(building),
@@ -691,7 +744,7 @@ export async function createNextFloorHass(options = {}) {
         return { response: { [id]: { forecast } } };
       }
 
-      // 6. License checks (Unlocks all Pro capabilities)
+      // 6. License checks (Unlocks all Pro capabilities, 100% offline, no external shop/API)
       if (type.includes("license")) {
         return {
           active: true,
@@ -699,17 +752,34 @@ export async function createNextFloorHass(options = {}) {
           licensee: "Server_Monits Enterprise Pro",
           checked_at: Date.now() / 1000,
           error: null,
+          packs: [],
+          offers: [],
+          updates: [],
+          loyalty: null,
+          newsletter: null,
           supporter: { code: "SM-PRO", until: "2099-12-31" }
         };
       }
 
-      // 7. BLE Devices & Scanners
-      if (type === "nextfloor/ble/devices") {
+      // 7. BLE Devices, TimeTravel & Diagnostics (100% local)
+      if (type === "nextfloor/ble/devices" || type === "neonplan3d/ble/devices") {
         return { available: false, scanners: [], devices: [] };
       }
 
-      if (type === "nextfloor/ble/scan") {
+      if (type === "nextfloor/ble/scan" || type === "neonplan3d/ble/scan") {
         return { readings: {} };
+      }
+
+      if (type.startsWith("neonplan3d/timetravel/")) {
+        return { available: false, rows: [], events: [] };
+      }
+
+      if (type.startsWith("neonplan3d/locate/")) {
+        return { available: false, scanners: [], tags: [] };
+      }
+
+      if (type.startsWith("neonplan3d/diagnostics/")) {
+        return { enabled: false };
       }
 
       // 8. 24-Hour Sensor History & Statistics from Database
@@ -769,10 +839,11 @@ export async function createNextFloorHass(options = {}) {
       const matched = dbSensorsCache.find(s => s.identifier === ident);
       if (matched) {
         activeSensorIdentifier = matched.identifier;
+        expandedSensorIdentifier = matched.identifier;
         try {
           localStorage.setItem("nextfloor.cards", "1");
           localStorage.setItem("nextfloor.house_card_folded", "0");
-          const v3d = window.nfPanel?.shadowRoot?.querySelector("nf-view3d");
+          const v3d = window.nfPanel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
           if (v3d) {
             v3d._liveCardOn = true;
             v3d._houseFolded = false;
@@ -791,12 +862,33 @@ export async function createNextFloorHass(options = {}) {
     getBuilding: () => (window.nfPanel?.data?.building || building),
     getAreas: () => areasMap,
     getActiveSensorIdentifier: () => activeSensorIdentifier,
+    getExpandedSensorIdentifier: () => expandedSensorIdentifier,
+    setExpandedSensor(identOrEntityId) {
+      if (!identOrEntityId) {
+        if (expandedSensorIdentifier !== null) {
+          expandedSensorIdentifier = null;
+          pushHassToPanel();
+        }
+        return null;
+      }
+      const clean = identOrEntityId.replace(/^sensor\./, "").replace(/_(temp|humidity|power)$/, "");
+      const found = dbSensorsCache.find(s => s.identifier === clean || s.area_id === clean);
+      if (found) {
+        activeSensorIdentifier = found.identifier;
+        expandedSensorIdentifier = found.identifier;
+        void fetchSensorHistory(found.identifier).then(() => pushHassToPanel());
+        pushHassToPanel();
+        return this.getSensorCardData(found.identifier);
+      }
+      return null;
+    },
     setActiveSensor(identOrEntityId) {
       if (!identOrEntityId) return null;
       const clean = identOrEntityId.replace(/^sensor\./, "").replace(/_(temp|humidity|power)$/, "");
       const found = dbSensorsCache.find(s => s.identifier === clean || s.area_id === clean);
       if (found) {
         activeSensorIdentifier = found.identifier;
+        expandedSensorIdentifier = found.identifier;
         void fetchSensorHistory(found.identifier).then(() => pushHassToPanel());
         pushHassToPanel();
         return this.getSensorCardData(found.identifier);
@@ -808,6 +900,9 @@ export async function createNextFloorHass(options = {}) {
       const curIdx = Math.max(0, dbSensorsCache.findIndex(s => s.identifier === activeSensorIdentifier));
       const nextIdx = (curIdx + delta + dbSensorsCache.length) % dbSensorsCache.length;
       activeSensorIdentifier = dbSensorsCache[nextIdx].identifier;
+      if (expandedSensorIdentifier !== null) {
+        expandedSensorIdentifier = activeSensorIdentifier;
+      }
       void fetchSensorHistory(activeSensorIdentifier).then(() => pushHassToPanel());
       pushHassToPanel();
       return this.getSensorCardData(activeSensorIdentifier);
@@ -824,47 +919,27 @@ export async function createNextFloorHass(options = {}) {
       if (!dbSensorsCache.length) return [];
       const targetB = b || window.nfPanel?.data?.building || building;
 
-      // If a specific room is selected, keep activeSensorIdentifier if it belongs to that room; otherwise pick first sensor in that room
+      // Return ALL thermohygrometer sensors on the active floor (or inside the selected room)
+      let roomAreaFilter = null;
       if (roomId) {
         for (const fl of targetB?.floors || []) {
           const rm = (fl.rooms || []).find(r => r.id === roomId);
           if (rm) {
-            const roomArea = rm.ha_area || rm.id;
-            const activeInRoomIdx = dbSensorsCache.findIndex(
-              s => s.identifier === activeSensorIdentifier && s.area_id === roomArea
-            );
-            if (activeInRoomIdx >= 0) {
-              const card = buildCardDescriptorForSensor(dbSensorsCache[activeInRoomIdx], targetB, activeInRoomIdx, dbSensorsCache.length);
-              return card ? [card] : [];
-            }
-            const roomIdx = dbSensorsCache.findIndex(s => s.area_id === roomArea);
-            if (roomIdx >= 0) {
-              activeSensorIdentifier = dbSensorsCache[roomIdx].identifier;
-              const card = buildCardDescriptorForSensor(dbSensorsCache[roomIdx], targetB, roomIdx, dbSensorsCache.length);
-              return card ? [card] : [];
-            }
+            roomAreaFilter = rm.ha_area || rm.id;
+            break;
           }
         }
       }
 
-      // Otherwise show the active sensor card (filtered by floor if a floor is selected)
-      let idx = dbSensorsCache.findIndex(s => s.identifier === activeSensorIdentifier);
-      if (idx < 0) idx = 0;
-      let chosen = dbSensorsCache[idx];
-
-      if (floorId) {
-        const anchor = findSensor3DAnchor(chosen, targetB);
-        if (anchor.floorId !== floorId) {
-          const onFloorIdx = dbSensorsCache.findIndex(s => findSensor3DAnchor(s, targetB).floorId === floorId);
-          if (onFloorIdx >= 0) {
-            idx = onFloorIdx;
-            chosen = dbSensorsCache[idx];
-          }
-        }
-      }
-
-      const card = buildCardDescriptorForSensor(chosen, targetB, idx, dbSensorsCache.length);
-      return card ? [card] : [];
+      const cards = [];
+      dbSensorsCache.forEach((s, idx) => {
+        const anchor = findSensor3DAnchor(s, targetB);
+        if (floorId && anchor.floorId !== floorId) return;
+        if (roomAreaFilter && s.area_id !== roomAreaFilter) return;
+        const card = buildCardDescriptorForSensor(s, targetB, idx, dbSensorsCache.length);
+        if (card) cards.push(card);
+      });
+      return cards;
     },
     buildFloorHeatmapCanvas(floor, heatMode, hassObj = null) {
       if (!floor || !Array.isArray(floor.rooms) || !floor.rooms.length) return null;
@@ -1145,7 +1220,7 @@ export async function createNextFloorHass(options = {}) {
       }
       return dbSensorsCache;
     },
-    async pushDbSensorReading({ identifier, name, area_id, floor_id, placement_x, placement_z, placement_y, temperature, humidity, power_kw }) {
+    async pushDbSensorReading({ identifier, name, sensor_type, area_id, floor_id, placement_x, placement_z, placement_y, temperature, humidity, power_kw, amperes, volts, data_source_id, sql_query }) {
       const res = await fetch("/api/v1/sensors/readings", {
         method: "POST",
         headers: {
@@ -1155,14 +1230,19 @@ export async function createNextFloorHass(options = {}) {
         body: JSON.stringify({
           identifier,
           ...(name ? { name } : {}),
+          ...(sensor_type ? { sensor_type } : {}),
           ...(area_id ? { area_id } : {}),
           ...(floor_id ? { floor_id } : {}),
           ...(placement_x !== undefined && placement_x !== null && placement_x !== "" ? { placement_x: Number(placement_x) } : {}),
           ...(placement_z !== undefined && placement_z !== null && placement_z !== "" ? { placement_z: Number(placement_z) } : {}),
           ...(placement_y !== undefined && placement_y !== null && placement_y !== "" ? { placement_y: Number(placement_y) } : {}),
+          ...(data_source_id !== undefined && data_source_id !== null && data_source_id !== "" ? { data_source_id: Number(data_source_id) } : {}),
+          ...(sql_query !== undefined && sql_query !== null && sql_query !== "" ? { sql_query } : {}),
           temperature: temperature !== "" && temperature !== null && temperature !== undefined ? Number(temperature) : null,
           humidity: humidity !== "" && humidity !== null && humidity !== undefined ? Number(humidity) : null,
-          power_kw: power_kw !== "" && power_kw !== null && power_kw !== undefined ? Number(power_kw) : null
+          power_kw: power_kw !== "" && power_kw !== null && power_kw !== undefined ? Number(power_kw) : null,
+          amperes: amperes !== "" && amperes !== null && amperes !== undefined ? Number(amperes) : null,
+          volts: volts !== "" && volts !== null && volts !== undefined ? Number(volts) : null
         })
       });
       if (res.ok) {
@@ -1173,8 +1253,9 @@ export async function createNextFloorHass(options = {}) {
       }
       return res.ok;
     },
-    async addAndPlaceSensorIn3D({ name, identifier, floorId, areaId, x, z, mountY, temperature, humidity, powerKw }) {
+    async addAndPlaceSensorIn3D({ name, identifier, sensorType, floorId, areaId, x, z, mountY, temperature, humidity, powerKw, amperes, volts, dataSourceId, sqlQuery }) {
       const cleanName = (name || "Rack Env Sensor").trim();
+      const sType = (sensorType || "thermohygrometer").trim().toLowerCase();
       const cleanIdent = (identifier || cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `sensor_${Date.now().toString(36)}`).slice(0, 60);
       const px = Math.round(Number(x || 3.0) * 100) / 100;
       const pz = Math.round(Number(z || 2.5) * 100) / 100;
@@ -1186,18 +1267,23 @@ export async function createNextFloorHass(options = {}) {
       const ok = await this.pushDbSensorReading({
         identifier: cleanIdent,
         name: cleanName,
+        sensor_type: sType,
         area_id: arId,
         floor_id: flId,
         placement_x: px,
         placement_z: pz,
         placement_y: py,
-        temperature: temperature ?? 21.5,
-        humidity: humidity ?? 45.0,
-        power_kw: powerKw !== "" && powerKw !== undefined ? powerKw : null
+        data_source_id: dataSourceId || null,
+        sql_query: sqlQuery || null,
+        temperature: (sType === "thermohygrometer" || sType === "thermometer") ? (temperature ?? 21.5) : null,
+        humidity: (sType === "thermohygrometer" || sType === "hygrometer") ? (humidity ?? 45.0) : null,
+        power_kw: sType === "power_meter" ? (powerKw !== "" && powerKw !== undefined ? powerKw : 1.5) : null,
+        amperes: sType === "ammeter" ? (amperes !== "" && amperes !== undefined ? amperes : 12.0) : null,
+        volts: sType === "voltmeter" ? (volts !== "" && volts !== undefined ? volts : 220.0) : null
       });
       if (!ok) return null;
 
-      // 2. Place 3D Thermohygrograph hardware unit + floating Temperature & Humidity pins in the 3D floor plan
+      // 2. Place 3D hardware unit + floating pin(s) matching the selected sensor_type
       const panel = window.nfPanel;
       const curB = structuredClone(panel?.data?.building || building);
       const targetFloor = (curB.floors || []).find(f => f.id === flId) || (curB.floors || [])[0];
@@ -1205,17 +1291,26 @@ export async function createNextFloorHass(options = {}) {
         targetFloor.placements = targetFloor.placements || [];
         const tempEntityId = `sensor.${cleanIdent}_temp`;
         const humEntityId = `sensor.${cleanIdent}_humidity`;
+        const pwrEntityId = `sensor.${cleanIdent}_power`;
+        const ampEntityId = `sensor.${cleanIdent}_ampere`;
+        const voltEntityId = `sensor.${cleanIdent}_volt`;
 
         targetFloor.placements = targetFloor.placements.filter(
-          p => p.entity_id !== tempEntityId && p.entity_id !== humEntityId
+          p => ![tempEntityId, humEntityId, pwrEntityId, ampEntityId, voltEntityId].includes(p.entity_id)
         );
-        targetFloor.placements.push({ entity_id: tempEntityId, x: px, z: pz });
-        targetFloor.placements.push({ entity_id: humEntityId, x: Math.round((px + 0.35) * 100) / 100, z: pz });
-
-        if (powerKw !== "" && powerKw !== null && powerKw !== undefined) {
-          const pwrEntityId = `sensor.${cleanIdent}_power`;
-          targetFloor.placements = targetFloor.placements.filter(p => p.entity_id !== pwrEntityId);
-          targetFloor.placements.push({ entity_id: pwrEntityId, x: Math.round((px + 0.7) * 100) / 100, z: pz });
+        if (sType === "thermohygrometer") {
+          targetFloor.placements.push({ entity_id: tempEntityId, x: px, z: pz });
+          targetFloor.placements.push({ entity_id: humEntityId, x: Math.round((px + 0.35) * 100) / 100, z: pz });
+        } else if (sType === "thermometer") {
+          targetFloor.placements.push({ entity_id: tempEntityId, x: px, z: pz });
+        } else if (sType === "hygrometer") {
+          targetFloor.placements.push({ entity_id: humEntityId, x: px, z: pz });
+        } else if (sType === "power_meter") {
+          targetFloor.placements.push({ entity_id: pwrEntityId, x: px, z: pz });
+        } else if (sType === "ammeter") {
+          targetFloor.placements.push({ entity_id: ampEntityId, x: px, z: pz });
+        } else if (sType === "voltmeter") {
+          targetFloor.placements.push({ entity_id: voltEntityId, x: px, z: pz });
         }
 
         targetFloor.furniture = targetFloor.furniture || [];

@@ -9,44 +9,111 @@
   
   <link rel="stylesheet" href="/static/css/themes.css">
   <link rel="stylesheet" href="/static/css/main.css">
+  <style>
+    .fp3d-app-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      flex-wrap: wrap;
+      background: rgba(14, 21, 38, 0.96);
+      border-bottom: 1px solid rgba(0, 240, 255, 0.25);
+      color: #e1e1e1;
+      font-family: Roboto, "Noto Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      min-height: 52px;
+      box-sizing: border-box;
+    }
+    .fp3d-app-header h1 {
+      margin: 0 4px 0 0;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: #f8fafc;
+      white-space: nowrap;
+    }
+    .fp3d-app-seg {
+      display: inline-flex;
+      padding: 4px;
+      gap: 2px;
+      border-radius: 999px;
+      background: rgba(28, 34, 52, 0.88);
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 6px 20px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(10px);
+      align-items: center;
+    }
+    .fp3d-app-seg a,
+    .fp3d-app-seg button,
+    .fp3d-app-seg select {
+      font: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      border: none;
+      background: none;
+      color: #9b9b9b;
+      padding: 6px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      text-decoration: none;
+      transition: background 0.15s, color 0.15s;
+    }
+    .fp3d-app-seg a:hover,
+    .fp3d-app-seg button:hover {
+      background: rgba(225, 225, 225, 0.08);
+      color: #e1e1e1;
+    }
+    .fp3d-app-seg a.active {
+      background: rgba(3, 169, 244, 0.22);
+      color: #37e0ff;
+    }
+    .fp3d-app-grow {
+      flex: 1;
+    }
+  </style>
   {% block extra_head %}{% endblock %}
 </head>
 <body>
   {% if show_nav|default(true) %}
-  <header class="navbar">
-    <a href="/" class="brand">
-      <span>{{ _('app_name') }}</span>
-      <span class="brand-badge">v1.0</span>
-    </a>
+  <header class="fp3d-app-header">
+    <h1>{{ _('app_name') }}</h1>
 
-    <ul class="nav-links">
-      <li><a href="/" class="{% if active_tab == 'dashboard' %}active{% endif %}">{{ _('nav_dashboard') }}</a></li>
-      <li><a href="/admin/users" class="{% if active_tab == 'users' %}active{% endif %}">{{ _('nav_users') }}</a></li>
-      <li><a href="/admin/settings" class="{% if active_tab == 'settings' %}active{% endif %}">{{ _('nav_settings') }}</a></li>
-      <li><a href="/admin/audit" class="{% if active_tab == 'audit' %}active{% endif %}">{{ _('nav_audit') }}</a></li>
-    </ul>
+    <nav class="fp3d-app-seg" aria-label="Primary Navigation">
+      <a href="/" class="{% if active_tab == 'dashboard' %}active{% endif %}">{{ _('nav_dashboard') }}</a>
+      <a href="/admin/users" class="{% if active_tab == 'users' %}active{% endif %}">{{ _('nav_users') }}</a>
+      <a href="/admin/settings" class="{% if active_tab == 'settings' %}active{% endif %}">{{ _('nav_settings') }}</a>
+      <a href="/admin/audit" class="{% if active_tab == 'audit' %}active{% endif %}">{{ _('nav_audit') }}</a>
+    </nav>
 
-    <div class="nav-controls">
-      <!-- Language Switcher -->
-      <select id="langSwitcher" class="form-control" style="width: auto; padding: 0.3rem 0.5rem; font-size: 0.8rem;" onchange="switchLanguage(this.value)">
-        <option value="en" {% if current_lang == 'en' %}selected{% endif %}>EN</option>
-        <option value="id" {% if current_lang == 'id' %}selected{% endif %}>ID</option>
+    <span class="fp3d-app-grow"></span>
+
+    <label class="fp3d-app-seg" title="Language / Bahasa" style="padding: 4px 10px;">
+      🌐
+      <select id="langSwitcher" aria-label="Language" style="padding: 4px 6px; color: #f8fafc; background: transparent;" onchange="switchLanguage(this.value)">
+        <option value="en" style="background:#0e1526;" {% if current_lang == 'en' %}selected{% endif %}>EN</option>
+        <option value="id" style="background:#0e1526;" {% if current_lang == 'id' %}selected{% endif %}>ID</option>
       </select>
+    </label>
 
-      <!-- Theme Switcher -->
-      <button class="btn btn-secondary btn-sm" onclick="toggleTheme()" title="{{ _('theme') }}">
-        <span id="themeIcon">🌓</span>
-      </button>
-
-      {% if current_user %}
-      <span style="font-size: 0.85rem; color: var(--text-muted); margin-left: 0.5rem;">
-        {{ current_user.username }}
-      </span>
-      <button class="btn btn-secondary btn-sm" onclick="handleLogout()">{{ _('logout') }}</button>
-      {% else %}
-      <a href="/login" class="btn btn-primary btn-sm">{{ _('login') }}</a>
-      {% endif %}
+    <div class="fp3d-app-seg">
+      <button onclick="toggleTheme()" title="{{ _('theme') }}"><span id="themeIcon">🌓</span></button>
     </div>
+
+    {% if current_user %}
+    <div class="fp3d-app-seg">
+      <span style="font-size: 12.5px; color: #94a3b8; padding: 0 8px;">{{ current_user.username }}</span>
+      <button onclick="handleLogout()">⏻ {{ _('logout') }}</button>
+    </div>
+    {% else %}
+    <div class="fp3d-app-seg">
+      <a href="/login" class="active">{{ _('login') }}</a>
+    </div>
+    {% endif %}
   </header>
   {% endif %}
 

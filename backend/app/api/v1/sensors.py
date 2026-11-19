@@ -155,6 +155,7 @@ async def ensure_default_sensors(db: AsyncSession) -> List[Sensor]:
 class DirectReadingInput(BaseModel):
     identifier: str = Field(..., min_length=1, max_length=100)
     name: Optional[str] = None
+    sensor_type: Optional[str] = None
     area_id: Optional[str] = None
     floor_id: Optional[str] = None
     placement_x: Optional[float] = None
@@ -163,8 +164,12 @@ class DirectReadingInput(BaseModel):
     temperature: Optional[float] = None
     humidity: Optional[float] = None
     power_kw: Optional[float] = None
+    amperes: Optional[float] = None
+    volts: Optional[float] = None
     wifi_dbm: Optional[float] = None
     battery_level: Optional[float] = None
+    data_source_id: Optional[str] = None
+    sql_query: Optional[str] = None
 
 
 class VirtualStateUpdate(BaseModel):
@@ -206,7 +211,11 @@ async def list_sensors(
                 "current_temperature": s.current_temperature,
                 "current_humidity": s.current_humidity,
                 "power_kw": meta.get("power_kw"),
+                "amperes": meta.get("amperes"),
+                "volts": meta.get("volts"),
                 "wifi_dbm": meta.get("wifi_dbm"),
+                "data_source_id": meta.get("data_source_id"),
+                "sql_query": meta.get("sql_query"),
                 "battery_level": s.battery_level,
                 "status": s.status,
                 "temp_max_warning": s.temp_max_warning,
@@ -241,12 +250,14 @@ async def push_sensor_reading(
 
     result = await process_telemetry_reading(db, payload)
 
-    # Also update metadata (area_id, floor_id, placement_x/z/y, power_kw, wifi_dbm, custom name) on the Sensor row
+    # Also update metadata (sensor_type, area_id, floor_id, placement_x/z/y, power_kw, amperes, volts, wifi_dbm, data_source_id, sql_query, custom name)
     stmt = select(Sensor).where(Sensor.identifier == data.identifier)
     sensor = (await db.execute(stmt)).scalar_one_or_none()
     if sensor:
         if data.name:
             sensor.name = data.name
+        if data.sensor_type:
+            sensor.sensor_type = data.sensor_type
         meta = dict(sensor.metadata_json or {})
         if data.area_id:
             meta["area_id"] = data.area_id
@@ -260,8 +271,16 @@ async def push_sensor_reading(
             meta["placement_y"] = round(float(data.placement_y), 2)
         if data.power_kw is not None:
             meta["power_kw"] = round(float(data.power_kw), 2)
+        if data.amperes is not None:
+            meta["amperes"] = round(float(data.amperes), 2)
+        if data.volts is not None:
+            meta["volts"] = round(float(data.volts), 2)
         if data.wifi_dbm is not None:
             meta["wifi_dbm"] = round(float(data.wifi_dbm), 1)
+        if data.data_source_id is not None:
+            meta["data_source_id"] = data.data_source_id
+        if data.sql_query is not None:
+            meta["sql_query"] = data.sql_query
         sensor.metadata_json = meta
         await db.commit()
 
@@ -271,6 +290,7 @@ async def push_sensor_reading(
             {
                 "identifier": sensor.identifier,
                 "sensor_name": sensor.name,
+                "sensor_type": sensor.sensor_type,
                 "area_id": meta.get("area_id", "server_alpha"),
                 "floor_id": meta.get("floor_id", "ground"),
                 "placement_x": meta.get("placement_x"),
@@ -279,6 +299,8 @@ async def push_sensor_reading(
                 "temperature": sensor.current_temperature,
                 "humidity": sensor.current_humidity,
                 "power_kw": meta.get("power_kw"),
+                "amperes": meta.get("amperes"),
+                "volts": meta.get("volts"),
                 "wifi_dbm": meta.get("wifi_dbm"),
                 "status": sensor.status,
             },
@@ -288,7 +310,10 @@ async def push_sensor_reading(
     return {
         **result,
         "name": sensor.name if sensor else data.name,
+        "sensor_type": sensor.sensor_type if sensor else data.sensor_type,
         "power_kw": data.power_kw,
+        "amperes": data.amperes,
+        "volts": data.volts,
         "wifi_dbm": data.wifi_dbm,
         "area_id": data.area_id,
         "floor_id": data.floor_id,

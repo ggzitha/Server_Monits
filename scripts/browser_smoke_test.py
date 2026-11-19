@@ -177,16 +177,16 @@ def run_smoke_test():
             page.fill("#loginPassword", TEST_ADMIN_PASS)
             page.click("#btnLogin")
 
-            # 2. Wait for main UI & Integrated NextFloor Header
-            print(">> [2/7] Loading 3D Facility Monitor & Integrated Header (/)...")
+            # 2. Wait for main UI & Integrated NeonPlan 3D v3.5.1 Header
+            print(">> [2/8] Loading 3D Facility Monitor & NeonPlan 3D v3.5.1 Header (/)...")
             page.wait_for_url(f"{BASE_URL}/", timeout=8000)
-            page.wait_for_selector("nextfloor-panel", timeout=10000)
-            page.locator("header.nf-header.monits-top-navbar").wait_for(state="visible", timeout=10000)
+            page.wait_for_selector("neonplan3d-panel", timeout=10000)
+            page.locator("header.fp3d-header").wait_for(state="visible", timeout=10000)
 
-            header_count = page.locator("header.nf-header.monits-top-navbar").count()
+            header_count = page.locator("header.fp3d-header").count()
             if header_count != 1:
-                raise RuntimeError(f"Expected 1 integrated .nf-header, found {header_count}")
-            print("  ✓ Native NextFloor .nf-header is VISIBLE and fully integrated with Server_Monits controls.")
+                raise RuntimeError(f"Expected 1 integrated .fp3d-header, found {header_count}")
+            print("  ✓ NeonPlan 3D v3.5.1 .fp3d-header is VISIBLE and fully integrated with Server_Monits controls.")
 
             # 3. Assert NO German words & NO Home Assistant text
             print(">> [3/8] Verifying language purity (No German words, No Home Assistant references)...")
@@ -202,13 +202,13 @@ def run_smoke_test():
             # 4. Test 3D Canvas
             print(">> [4/8] Verifying 3D WebGL Canvas...")
             page.wait_for_function("""() => {
-                const p = document.querySelector('nextfloor-panel');
+                const p = document.querySelector('neonplan3d-panel');
                 if (!p || !p.shadowRoot) return false;
-                const v = p.shadowRoot.querySelector('nf-view3d');
+                const v = p.shadowRoot.querySelector('fp3d-view3d');
                 if (!v || !v.shadowRoot) return false;
                 return v.shadowRoot.querySelector('canvas') !== null;
             }""", timeout=15000)
-            print("  ✓ NextFloor Three.js 3D canvas active and rendering.")
+            print("  ✓ NeonPlan 3D v3.5.1 Three.js 3D canvas active and rendering.")
 
             # 5. Test Placing New Temperature & Humidity Sensor at Specific Place + Virtual Lights
             print(">> [5/8] Testing Adding & Placing New Temp/Humidity Sensor at Specific Place (X=4.2m, Z=3.1m, Y=1.6m)...")
@@ -229,37 +229,61 @@ def run_smoke_test():
                 raise RuntimeError(f"Expected sensor placement confirmation, got '{place_msg}'")
             print(f"  ✓ Sensor placed at specific coordinates & saved to DB: {place_msg}")
 
-            # Verify 3D Floating Hologram Card (.live-card-env) is 3D-projected and visible, plus visible .nf-dev sensor pins
-            live_card_check = page.evaluate("""() => {
-                const v3d = document.querySelector('nextfloor-panel')?.shadowRoot?.querySelector('nf-view3d');
-                if (!v3d || !v3d.shadowRoot) return { found: false };
-                const card = v3d.shadowRoot.querySelector('.live-card-env');
-                if (!card) return { found: false };
-                const cs = getComputedStyle(card);
+            # Verify ALL sensors on floor show compact Gauges-only cards (.live-card-env-mini), clicking one expands to Full (.live-card-env-full with 24h chart below & no Rack Power), and clicking outside collapses back
+            multi_check = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel')?.shadowRoot?.querySelector('fp3d-view3d');
+                if (!v3d || !v3d.shadowRoot) return { ok: false };
+                const miniCards = v3d.shadowRoot.querySelectorAll('.live-card-env-mini').length;
+                const fullCards = v3d.shadowRoot.querySelectorAll('.live-card-env-full').length;
+                return { ok: true, miniCards, fullCards };
+            }""")
+            if not multi_check.get("ok") or multi_check.get("miniCards", 0) < 5 or multi_check.get("fullCards") != 0:
+                raise RuntimeError(f"Expected all sensors as compact gauges-only cards initially, got: {multi_check}")
+
+            # Click the first compact Gauges-only card to expand it to Full view
+            page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                v3d.shadowRoot.querySelector('.live-card-env-mini')?.click();
+            }""")
+            page.wait_for_timeout(300)
+
+            # Verify no Rack Power in full card and chart is rendered inside .live-card-env-full
+            full_card_check = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                const card = v3d.shadowRoot.querySelector('.live-card-env-full');
                 const rings = card.querySelectorAll('svg.live-ring').length;
                 const hasSolarPath = !!card.querySelector('.live-day svg path.live-day-solar');
                 const hasUsePath = !!card.querySelector('.live-day svg path.live-day-use');
-                const visibleSensorPins = [...v3d.shadowRoot.querySelectorAll('.nf-dev')].filter(el => el.dataset.entity?.startsWith('sensor.') && getComputedStyle(el).display !== 'none').length;
+                const text = card.innerText || '';
+                return { rings, hasSolarPath, hasUsePath, hasPowerText: text.includes('Rack Power') };
+            }""")
+            if full_card_check["rings"] != 2 or not full_card_check["hasSolarPath"] or full_card_check["hasPowerText"]:
+                raise RuntimeError(f"Expected 2 rings + 24h chart + no Rack Power, got: {full_card_check}")
+
+            # Click collapse (−) / outside to return to all Gauges-only
+            page.evaluate("() => window.monitsApi.setExpandedSensor(null)")
+            page.wait_for_timeout(300)
+            after_collapse = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
                 return {
-                    found: true,
-                    visibility: cs.visibility,
-                    position: cs.position,
-                    transform: card.style.transform,
-                    rings,
-                    hasSolarPath,
-                    hasUsePath,
-                    visibleSensorPins
+                    miniCards: v3d.shadowRoot.querySelectorAll('.live-card-env-mini').length,
+                    fullCards: v3d.shadowRoot.querySelectorAll('.live-card-env-full').length
                 };
             }""")
-            if not live_card_check.get("found") or live_card_check.get("visibility") != "visible" or live_card_check.get("rings") != 2 or not live_card_check.get("hasSolarPath") or live_card_check.get("visibleSensorPins", 0) < 4:
-                raise RuntimeError(f"Expected 3D-anchored visible .live-card-env with 2 circular gauges and 24h chart, got: {live_card_check}")
-            print(f"  ✓ 3D-Anchored Sensor Hologram (.live-card-env @ {live_card_check['transform']}) and {live_card_check['visibleSensorPins']} 3D sensor pins verified with Temp/Humidity Gauges & 24h Chart!")
+            if after_collapse["fullCards"] != 0 or after_collapse["miniCards"] < 5:
+                raise RuntimeError(f"Expected all cards collapsed to mini Gauges-only, got: {after_collapse}")
+            print(f"  ✓ Multi-sensor 3D Holograms verified: {after_collapse['miniCards']} compact Gauges-only cards, 1 expandable Full card (Gauges + Readings + 24h Chart below, no Rack Power)!")
 
-            # Verify switching sensors via ▶ button works even when inside a room
+            # Expand a card and verify switching sensors via ▶ button works cleanly
+            page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                v3d.shadowRoot.querySelector('.live-card-env-mini')?.click();
+            }""")
+            page.wait_for_timeout(200)
             before_ident = page.evaluate("() => window.monitsApi.getActiveSensorIdentifier()")
             page.evaluate("""() => {
-                const v3d = document.querySelector('nextfloor-panel')?.shadowRoot?.querySelector('nf-view3d');
-                const nextBtn = v3d?.shadowRoot?.querySelector('.live-card-env button[title="Next Sensor"]');
+                const v3d = document.querySelector('neonplan3d-panel')?.shadowRoot?.querySelector('fp3d-view3d');
+                const nextBtn = v3d?.shadowRoot?.querySelector('.live-card-env-full button[title="Next Sensor"]');
                 if (nextBtn) nextBtn.click();
             }""")
             page.wait_for_timeout(300)
@@ -269,14 +293,14 @@ def run_smoke_test():
             print(f"  ✓ Sensor switching via ▶ button works cleanly: '{before_ident}' -> '{after_ident}'")
 
             # Verify Markers='none' hides .live-card-env and Markers='important' restores it
-            page.evaluate("() => { const p = document.querySelector('nextfloor-panel'); p.setPref('markers', 'none'); }")
+            page.evaluate("() => { const p = document.querySelector('neonplan3d-panel'); p._markers = 'none'; p.requestUpdate(); }")
             page.wait_for_timeout(300)
-            hidden_count = page.evaluate("() => document.querySelector('nextfloor-panel').shadowRoot.querySelector('nf-view3d').shadowRoot.querySelectorAll('.live-card').length")
+            hidden_count = page.evaluate("() => document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d').shadowRoot.querySelectorAll('.fp3d-holo').length")
             if hidden_count != 0:
-                raise RuntimeError(f"Expected 0 .live-card elements when markers='none', got {hidden_count}")
-            page.evaluate("() => { const p = document.querySelector('nextfloor-panel'); p.setPref('markers', 'important'); }")
+                raise RuntimeError(f"Expected 0 .fp3d-holo elements when markers='none', got {hidden_count}")
+            page.evaluate("() => { const p = document.querySelector('neonplan3d-panel'); p._markers = 'important'; p.requestUpdate(); }")
             page.wait_for_timeout(300)
-            restored_count = page.evaluate("() => document.querySelector('nextfloor-panel').shadowRoot.querySelector('nf-view3d').shadowRoot.querySelectorAll('.live-card-env').length")
+            restored_count = page.evaluate("() => document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d').shadowRoot.querySelectorAll('.live-card-env').length")
             if restored_count < 1:
                 raise RuntimeError(f"Expected .live-card-env to reappear when markers='important', got {restored_count}")
             print("  ✓ Markers='none' hides 3D hologram pop-up, and Markers='important' restores it.")
@@ -284,7 +308,7 @@ def run_smoke_test():
             # Verify Spatial IDW Heatmaps (temperature, humidity, wifi) render multi-color floor gradient meshes
             for hm in ["temperature", "humidity", "wifi"]:
                 hm_res = page.evaluate(f"""() => {{
-                    const v3d = document.querySelector('nextfloor-panel').shadowRoot.querySelector('nf-view3d');
+                    const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
                     v3d.heatMode = '{hm}';
                     v3d.requestUpdate();
                     v3d.applyTint();
@@ -306,7 +330,7 @@ def run_smoke_test():
                 if not hm_res.get("visible") or hm_res.get("uniqueColors", 0) < 3:
                     raise RuntimeError(f"Expected multi-color spatial heatmap for '{hm}', got: {hm_res}")
                 print(f"  ✓ Spatial wall-aware heatmap '{hm}' active ({hm_res['uniqueColors']} gradient color buckets).")
-            page.evaluate("() => { const v3d = document.querySelector('nextfloor-panel').shadowRoot.querySelector('nf-view3d'); v3d.heatMode = 'none'; v3d.applyTint(); }")
+            page.evaluate("() => { const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d'); v3d.heatMode = 'none'; v3d.applyTint(); }")
 
             # Toggle virtual light off then on
             page.evaluate("() => window.onVirtualLightToggle('light.server_alpha_light', 'off')")
@@ -339,13 +363,13 @@ def run_smoke_test():
             page.locator("#btnEditMode").click()
             page.wait_for_timeout(1000)
 
-            mode = page.evaluate("() => document.querySelector('nextfloor-panel')?._mode")
+            mode = page.evaluate("() => document.querySelector('neonplan3d-panel')?._mode")
             if mode != "editor":
                 raise RuntimeError(f"Expected mode 'editor', got '{mode}'")
 
             # Modify building in Editor (add a custom room 'Custom AI Cluster Pod') and click #btnSavePlan
             page.evaluate("""() => {
-                const panel = document.querySelector('nextfloor-panel');
+                const panel = document.querySelector('neonplan3d-panel');
                 const b = structuredClone(panel.data.building);
                 if (!b.floors[0].rooms.some(r => r.id === 'room_ai_pod')) {
                     b.floors[0].rooms.push({
@@ -363,12 +387,20 @@ def run_smoke_test():
             page.wait_for_timeout(600)
             print("  ✓ Modified 3D building in Editor and saved via 💾 Save button.")
 
-            # 8. Navigate to /admin/users, then back to /, and assert ALL modifications & placed sensors persisted!
-            print(">> [8/8] Navigating to /admin/users and back to / to verify DB persistence...")
+            # 8. Navigate to /admin/users, /admin/settings, /admin/audit to verify unified .fp3d-app-header layout & DB persistence!
+            print(">> [8/8] Verifying unified header on /admin/users, /admin/settings, /admin/audit and DB persistence...")
             page.locator("#btnNavUsers").click()
             page.wait_for_url(f"{BASE_URL}/admin/users", timeout=8000)
+            if page.locator("header.fp3d-app-header").count() != 1:
+                raise RuntimeError("Expected unified .fp3d-app-header on /admin/users")
+            page.goto(f"{BASE_URL}/admin/settings")
+            if page.locator("header.fp3d-app-header").count() != 1:
+                raise RuntimeError("Expected unified .fp3d-app-header on /admin/settings")
+            page.goto(f"{BASE_URL}/admin/audit")
+            if page.locator("header.fp3d-app-header").count() != 1:
+                raise RuntimeError("Expected unified .fp3d-app-header on /admin/audit")
             page.goto(f"{BASE_URL}/")
-            page.wait_for_selector("nextfloor-panel", timeout=10000)
+            page.wait_for_selector("neonplan3d-panel", timeout=10000)
             page.wait_for_function("() => window.monitsApi && window.nfPanel && window.nfPanel.data && window.nfPanel.data.building", timeout=10000)
 
             persisted_check = page.evaluate("""() => {
