@@ -225,39 +225,7 @@
     <div id="dataSourcesList" style="display: flex; flex-direction: column; gap: 0.6rem;">
       <div style="color: var(--text-muted); font-size: 0.85rem;">Loading data sources...</div>
     </div>
-  </div>
-
-  <!-- Grafana-Style SQL Query Runner / Explore -->
-  <div class="card" style="margin-bottom: 1.5rem;" id="sqlExplorerCard">
-    <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 0.75rem; margin-bottom: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.75rem;">
-      <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
-        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Data source</span>
-        <select id="explorerDsSelect" class="form-control" style="width: auto; min-width: 190px; padding: 0.35rem 0.6rem;">
-          <option value="">-- Select SQL Data Source --</option>
-        </select>
-        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Format:</span>
-        <select id="explorerFormat" class="form-control" style="width: auto; padding: 0.35rem 0.6rem;">
-          <option value="time_series">Time series</option>
-          <option value="table">Table</option>
-        </select>
-        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Range:</span>
-        <select id="explorerHours" class="form-control" style="width: auto; padding: 0.35rem 0.6rem;">
-          <option value="1">Last 1h</option>
-          <option value="6">Last 6h</option>
-          <option value="24" selected>Last 24h</option>
-          <option value="168">Last 7d</option>
-        </select>
-      </div>
-      <button type="button" class="btn btn-primary btn-sm" id="btnRunSqlQuery" onclick="handleRunExplorerQuery()">
-        ▶ Run query
-      </button>
-    </div>
-
-    <textarea id="explorerSqlInput" rows="6" class="form-control" style="font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.84rem; line-height: 1.45; background: #070b14; color: #e2e8f0; border-color: rgba(0, 240, 255, 0.3);" placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time">SELECT recorded_at AS "time", temperature, humidity FROM sensor_readings WHERE recorded_at BETWEEN $__timeFrom() AND $__timeTo() ORDER BY recorded_at DESC LIMIT 50</textarea>
-
-    <div id="explorerStatus" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.5rem;"></div>
-    <div id="explorerChartWrap" style="display: none; margin-top: 0.75rem; padding: 0.75rem; border-radius: 8px; background: rgba(7, 11, 20, 0.7); border: 1px solid rgba(0, 240, 255, 0.2);"></div>
-    <div id="explorerTableWrap" style="margin-top: 0.75rem; overflow-x: auto;"></div>
+    <div id="dsTestStatus" style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.65rem;"></div>
   </div>
 
   <!-- Save Button -->
@@ -538,18 +506,6 @@
       if (!res.ok) return;
       cachedDataSources = await res.json();
       renderDataSourcesList();
-      const sel = document.getElementById('explorerDsSelect');
-      if (sel) {
-        const prev = sel.value;
-        sel.innerHTML = '<option value="">-- Select SQL Data Source --</option>' +
-          cachedDataSources.map(d => `<option value="${d.id}">${d.name} (${d.source_type})</option>`).join('');
-        if (prev && cachedDataSources.some(d => String(d.id) === String(prev))) {
-          sel.value = prev;
-        } else if (cachedDataSources.length > 0) {
-          const sqlDs = cachedDataSources.find(d => ['mysql', 'postgresql', 'sqlite'].includes(d.source_type)) || cachedDataSources[0];
-          sel.value = String(sqlDs.id);
-        }
-      }
     } catch (e) {
       console.error('Failed to load data sources:', e);
     }
@@ -576,19 +532,12 @@
             </div>
           </div>
           <div style="display:flex; gap:0.45rem; align-items:center;">
-            <button type="button" class="btn btn-sm" onclick="focusExplorerDs(${d.id})">Explore</button>
             <button type="button" class="btn btn-sm" onclick="testExistingDataSource(${d.id}, this)">Test</button>
             <button type="button" class="btn btn-sm" style="color:#ff5566; border-color:rgba(255,51,68,0.35);" onclick="deleteExistingDataSource(${d.id})">Delete</button>
           </div>
         </div>
       `;
     }).join('');
-  }
-
-  function focusExplorerDs(id) {
-    const sel = document.getElementById('explorerDsSelect');
-    if (sel) sel.value = String(id);
-    document.getElementById('sqlExplorerCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   async function handleCreateDataSource() {
@@ -640,8 +589,11 @@
       });
       const data = await res.json();
       const ok = Boolean(data.success ?? data.ok);
-      document.getElementById('explorerStatus').innerText = `${ok ? '✓' : '✕'} ${data.message || data.error || ''}`;
-      document.getElementById('explorerStatus').style.color = ok ? '#10b981' : '#ef4444';
+      const st = document.getElementById('dsTestStatus');
+      if (st) {
+        st.innerText = `${ok ? '✓' : '✕'} ${data.message || data.error || ''}`;
+        st.style.color = ok ? '#10b981' : '#ef4444';
+      }
     } finally {
       btn.disabled = false;
       btn.innerText = prev;
@@ -654,96 +606,6 @@
       headers: { 'X-CSRF-Token': getCsrfToken() }
     });
     if (res.ok) await loadDataSources();
-  }
-
-  async function handleRunExplorerQuery() {
-    const dsId = document.getElementById('explorerDsSelect').value;
-    const query = document.getElementById('explorerSqlInput').value;
-    const format = document.getElementById('explorerFormat').value;
-    const hours_back = Number(document.getElementById('explorerHours').value || 24);
-    const status = document.getElementById('explorerStatus');
-    const chartWrap = document.getElementById('explorerChartWrap');
-    const tableWrap = document.getElementById('explorerTableWrap');
-    const btn = document.getElementById('btnRunSqlQuery');
-
-    if (!dsId) {
-      status.style.color = '#ef4444';
-      status.innerText = '✕ Please select or add a Data Source first.';
-      return;
-    }
-
-    btn.disabled = true;
-    btn.innerText = 'Running...';
-    status.style.color = 'var(--text-muted)';
-    status.innerText = 'Executing read-only SQL query...';
-    chartWrap.style.display = 'none';
-    tableWrap.innerHTML = '';
-
-    try {
-      const res = await fetch(`/api/v1/data-sources/${dsId}/query`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCsrfToken() },
-        body: JSON.stringify({ query, format, hours_back, limit: 200 })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        status.style.color = '#ef4444';
-        status.innerText = `✕ ${data.detail || 'Query failed'}`;
-        return;
-      }
-
-      status.style.color = '#10b981';
-      status.innerText = `✓ Returned ${data.row_count} row(s) (${data.format}) · Columns: ${(data.columns || []).join(', ')}`;
-
-      // Render SVG sparkline for time_series when numeric column exists
-      if (data.format === 'time_series' && Array.isArray(data.rows) && data.rows.length > 1) {
-        const cols = data.columns || [];
-        const numCol = cols.find(c => c.toLowerCase() !== 'time' && typeof data.rows[0][c] === 'number');
-        if (numCol) {
-          const vals = data.rows.map(r => Number(r[numCol])).filter(v => Number.isFinite(v));
-          if (vals.length > 1) {
-            const minV = Math.min(...vals), maxV = Math.max(...vals);
-            const span = maxV - minV || 1;
-            const w = 720, h = 110;
-            const pts = vals.map((v, i) => {
-              const x = Math.round((i / (vals.length - 1)) * (w - 20) + 10);
-              const y = Math.round(h - 14 - ((v - minV) / span) * (h - 28));
-              return `${x},${y}`;
-            }).join(' ');
-            chartWrap.style.display = 'block';
-            chartWrap.innerHTML = `
-              <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-muted); margin-bottom:4px;">
-                <span style="color:var(--accent-cyan); font-weight:600;">${numCol}</span>
-                <span>min ${minV.toFixed(2)} · max ${maxV.toFixed(2)}</span>
-              </div>
-              <svg viewBox="0 0 ${w} ${h}" style="width:100%; height:110px; display:block;">
-                <polyline fill="none" stroke="#00f0ff" stroke-width="2.2" points="${pts}" />
-              </svg>
-            `;
-          }
-        }
-      }
-
-      if (Array.isArray(data.rows) && data.rows.length > 0) {
-        const cols = data.columns || Object.keys(data.rows[0]);
-        tableWrap.innerHTML = `
-          <table class="data-table">
-            <thead><tr>${cols.map(c => `<th>${c}</th>`).join('')}</tr></thead>
-            <tbody>
-              ${data.rows.slice(0, 50).map(r => `<tr>${cols.map(c => `<td>${r[c] ?? ''}</td>`).join('')}</tr>`).join('')}
-            </tbody>
-          </table>
-        `;
-      } else {
-        tableWrap.innerHTML = '<div style="color:var(--text-muted); font-size:0.82rem;">Query returned 0 rows.</div>';
-      }
-    } catch (err) {
-      status.style.color = '#ef4444';
-      status.innerText = `✕ ${err.message}`;
-    } finally {
-      btn.disabled = false;
-      btn.innerText = '▶ Run query';
-    }
   }
 
   loadSettings();

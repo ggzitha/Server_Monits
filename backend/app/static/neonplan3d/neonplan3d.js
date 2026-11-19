@@ -4790,11 +4790,11 @@ background:#0b1120f2;color:#e6f7ff;border:1px solid #37e0ff66;border-radius:12px
                   ✦ ${this.t("ext_tab")}${this._readyPacks?g`<span class="fp3d-badge" title=${this.t("ext_badge_ready_hint")}>⬇ ${this.t("ext_badge_ready",{n:this._readyPacks})}</span>`:this._newOffers?g`<span class="fp3d-badge" title=${this.t("offers_dot")}>${this.t("ext_badge_new",{n:this._newOffers})}</span>`:this._printDot?g`<span class="fp3d-badge" title=${this.t("print_dot_hint")}>${this.t("print_dot")}</span>`:y}
                 </button>
               </div>`:y}
-          <div class="fp3d-seg">
+          ${this._mode==="editor"?g`<div class="fp3d-seg">
             <button id="btnSavePlan" title="Save 3D Floor Plan to Database" @click=${()=>window.saveCurrentBuildingNow?.()}>💾 ${(this.hass?.language||"en").startsWith("id")?"Simpan":"Save"}</button>
             <button id="btnVirtualDb" title="DB Temp/Humidity Sensors & Virtual Lights" @click=${()=>window.toggleMonitsDrawer?.("devices")}>💡 ${(this.hass?.language||"en").startsWith("id")?"Sensor DB & Lampu":"DB Sensors & Lights"}</button>
             <button id="btnCablesMgr" title="3D Cabling (Below Floor / Wall / Ceiling)" @click=${()=>window.toggleMonitsDrawer?.("cables")}>🔌 ${(this.hass?.language||"en").startsWith("id")?"Kabel 3D":"3D Cables"}</button>
-          </div>
+          </div>`:y}
           <span class="fp3d-grow"></span>
           ${this._mode==="view"&&e?.floors.some(n=>n.rooms.length)?g`<button
                   class="fp3d-opts-btn"

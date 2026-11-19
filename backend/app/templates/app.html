@@ -419,11 +419,54 @@
           .fp3d-header {
             display: flex !important;
             align-items: center !important;
-            gap: 8px !important;
-            padding: 8px 14px !important;
+            gap: 6px !important;
+            padding: 6px 12px !important;
+            min-height: 48px !important;
             flex-wrap: wrap !important;
             background: rgba(14, 21, 38, 0.96) !important;
             border-bottom: 1px solid rgba(0, 240, 255, 0.25) !important;
+          }
+          .fp3d-header > h1 {
+            font-size: 16px !important;
+            margin: 0 4px 0 4px !important;
+            white-space: nowrap !important;
+          }
+          .fp3d-header > .fp3d-seg,
+          .fp3d-header > fp3d-plan-picker,
+          .fp3d-header > .fp3d-opts-btn {
+            flex-shrink: 0 !important;
+            white-space: nowrap !important;
+          }
+          .fp3d-header > .fp3d-opts-btn {
+            order: 3 !important;
+          }
+          .fp3d-header > .fp3d-seg:last-of-type {
+            order: 4 !important;
+          }
+          .fp3d-header > .fp3d-view-opts.fp3d-opts-open {
+            order: 5 !important;
+            width: 100% !important;
+            padding-top: 6px !important;
+            border-top: 1px solid rgba(0, 240, 255, 0.14) !important;
+          }
+          @media (max-width: 960px) {
+            .fp3d-header {
+              gap: 6px !important;
+              padding: 6px 10px !important;
+            }
+            .fp3d-header > .fp3d-grow {
+              display: none !important;
+            }
+          }
+          @media (max-width: 640px) {
+            .fp3d-header > h1 {
+              font-size: 14px !important;
+            }
+            .fp3d-header .fp3d-seg button,
+            .fp3d-header .fp3d-opts-btn {
+              padding: 5px 8px !important;
+              font-size: 12px !important;
+            }
           }
           .fp3d-stage-wrap {
             flex: 1 !important;
@@ -885,7 +928,7 @@
 
   async function init() {
     try {
-      await import("/static/neonplan3d/neonplan3d.js?v=20261119e");
+      await import("/static/neonplan3d/neonplan3d.js?v=20261119f");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {

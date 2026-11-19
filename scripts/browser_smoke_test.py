@@ -210,8 +210,28 @@ def run_smoke_test():
             }""", timeout=15000)
             print("  ✓ NeonPlan 3D v3.5.1 Three.js 3D canvas active and rendering.")
 
-            # 5. Test Placing New Temperature & Humidity Sensor at Specific Place + Virtual Lights
+            # Verify Editor-only buttons are hidden in 3D View and header is single-row
+            view_header_check = page.evaluate("""() => {
+                const p = document.querySelector('neonplan3d-panel');
+                const sr = p?.shadowRoot;
+                const hdr = sr?.querySelector('.fp3d-header');
+                return {
+                    hasSave: !!sr?.querySelector('#btnSavePlan'),
+                    hasDb: !!sr?.querySelector('#btnVirtualDb'),
+                    hasCables: !!sr?.querySelector('#btnCablesMgr'),
+                    hdrHeight: hdr ? Math.round(hdr.getBoundingClientRect().height) : 0
+                };
+            }""")
+            if view_header_check["hasSave"] or view_header_check["hasDb"] or view_header_check["hasCables"]:
+                raise RuntimeError(f"Save / DB Sensors / 3D Cables must be hidden in 3D view, got: {view_header_check}")
+            if view_header_check["hdrHeight"] > 68:
+                raise RuntimeError(f"Expected single-row 3D header (<=68px), got {view_header_check['hdrHeight']}px")
+            print(f"  ✓ 3D View header is single-row ({view_header_check['hdrHeight']}px) & Editor-only buttons are hidden.")
+
+            # 5. Test Placing New Temperature & Humidity Sensor at Specific Place + Virtual Lights (in Editor mode)
             print(">> [5/8] Testing Adding & Placing New Temp/Humidity Sensor at Specific Place (X=4.2m, Z=3.1m, Y=1.6m)...")
+            page.locator("#btnEditMode").click()
+            page.wait_for_timeout(400)
             page.locator("#btnVirtualDb").click()
             page.wait_for_selector("#drawerDevices.open", timeout=5000)
 
@@ -228,6 +248,9 @@ def run_smoke_test():
             if "Cold Aisle Rack B09" not in place_msg:
                 raise RuntimeError(f"Expected sensor placement confirmation, got '{place_msg}'")
             print(f"  ✓ Sensor placed at specific coordinates & saved to DB: {place_msg}")
+            page.evaluate("() => window.toggleMonitsDrawer(null)")
+            page.locator("#btnViewMode").click()
+            page.wait_for_timeout(500)
 
             # Verify ALL sensors on floor show compact Gauges-only cards (.live-card-env-mini), clicking one expands to Full (.live-card-env-full with 24h chart below & no Rack Power), and clicking outside collapses back
             multi_check = page.evaluate("""() => {
@@ -346,8 +369,10 @@ def run_smoke_test():
                 raise RuntimeError(f"Expected virtual light state 'on', got '{light_state}'")
             print("  ✓ Virtual lights toggle ON/OFF in 3D scene & persist to DB.")
 
-            # 6. Test 3D Cabling (Below Floor, In Wall, Ceiling for Power, FO, Ethernet)
+            # 6. Test 3D Cabling (Below Floor, In Wall, Ceiling for Power, FO, Ethernet) in Editor mode
             print(">> [6/8] Testing 3D Cabling (Power, FO, Ethernet in Below Floor / Wall / Ceiling)...")
+            page.locator("#btnEditMode").click()
+            page.wait_for_timeout(400)
             page.locator("#btnCablesMgr").click()
             page.wait_for_selector("#drawerCables.open", timeout=5000)
             page.click("button[onclick='handleAddCableRun()']")
