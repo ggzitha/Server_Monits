@@ -63,6 +63,10 @@ async def get_system_settings(db: AsyncSession = Depends(get_db)):
         result["mqtt_tls"] = "true" if settings.MQTT_TLS else "false"
     if "mqtt_client_id" not in result and settings.MQTT_CLIENT_ID:
         result["mqtt_client_id"] = settings.MQTT_CLIENT_ID
+    if "site_latitude" not in result:
+        result["site_latitude"] = "-2.575550"
+    if "site_longitude" not in result:
+        result["site_longitude"] = "140.686402"
 
     return result
 

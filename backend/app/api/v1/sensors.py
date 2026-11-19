@@ -334,7 +334,7 @@ async def _sync_sensor_from_datasource(db: AsyncSession, sensor: Sensor) -> Dict
 
     if sql_query:
         try:
-            res = await _execute_sql_query(source.source_type, cfg, sql_query, hours_back=24, limit=500)
+            res = await _execute_sql_query(source.source_type, cfg, sql_query, hours_back=24, limit=5000)
         except HTTPException as exc:
             return {"ok": False, "error": str(exc.detail)}
         except Exception as exc:
@@ -348,7 +348,7 @@ async def _sync_sensor_from_datasource(db: AsyncSession, sensor: Sensor) -> Dict
 
     if sql_query_hum:
         try:
-            res_h = await _execute_sql_query(source.source_type, cfg, sql_query_hum, hours_back=24, limit=500)
+            res_h = await _execute_sql_query(source.source_type, cfg, sql_query_hum, hours_back=24, limit=5000)
             rows_h = res_h.get("rows") or []
             if rows_h:
                 latest_h = _pick_latest_row(rows_h, sql_query_hum)
@@ -688,12 +688,12 @@ async def get_sensor_history(
             cfg = _decrypt_source_config(source)
             readings_by_ts: Dict[str, Dict[str, Any]] = {}
             ordered_readings: List[Dict[str, Any]] = []
-            max_rows = min(max(limit, 24), 500)
+            max_rows = min(max(limit, 24), 2500)
 
             if sql_query:
                 hist_sql = re.sub(r"\s+LIMIT\s+1\s*;?\s*$", "", sql_query.strip(), flags=re.IGNORECASE)
                 try:
-                    res = await _execute_sql_query(source.source_type, cfg, hist_sql, hours_back=hours, limit=max_rows)
+                    res = await _execute_sql_query(source.source_type, cfg, hist_sql, hours_back=hours, limit=25000)
                     raw_rows = res.get("rows") or []
                     if re.search(r"\bORDER\s+BY\b[^;]*\bDESC\b", hist_sql, re.IGNORECASE):
                         raw_rows = list(reversed(raw_rows))
@@ -715,7 +715,7 @@ async def get_sensor_history(
             if sql_query_hum:
                 hist_sql_h = re.sub(r"\s+LIMIT\s+1\s*;?\s*$", "", sql_query_hum.strip(), flags=re.IGNORECASE)
                 try:
-                    res_h = await _execute_sql_query(source.source_type, cfg, hist_sql_h, hours_back=hours, limit=max_rows)
+                    res_h = await _execute_sql_query(source.source_type, cfg, hist_sql_h, hours_back=hours, limit=25000)
                     raw_rows_h = res_h.get("rows") or []
                     if re.search(r"\bORDER\s+BY\b[^;]*\bDESC\b", hist_sql_h, re.IGNORECASE):
                         raw_rows_h = list(reversed(raw_rows_h))
@@ -733,13 +733,19 @@ async def get_sensor_history(
                     pass
 
             if ordered_readings:
+                # Evenly downsample across the full time window so the entire 24h range is preserved
+                if len(ordered_readings) > max_rows:
+                    step = (len(ordered_readings) - 1) / float(max_rows - 1)
+                    sampled = [ordered_readings[round(i * step)] for i in range(max_rows)]
+                else:
+                    sampled = ordered_readings
                 return {
                     "sensor_id": sensor.id,
                     "identifier": sensor.identifier,
                     "name": sensor.name,
                     "status": sensor.status,
                     "source": "external_sql",
-                    "readings": ordered_readings[-max_rows:],
+                    "readings": sampled,
                 }
 
     q = (

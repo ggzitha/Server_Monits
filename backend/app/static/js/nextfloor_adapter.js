@@ -159,6 +159,21 @@ export async function createNextFloorHass(options = {}) {
   let activeSensorIdentifier = "server_alpha_env";
   let expandedSensorIdentifier = null; // null = all cards show compact Gauges-only mode; identifier = that card shows full Gauges + Readings + 24h Chart below
 
+  function parseDbTimestampMs(ts) {
+    if (ts === null || ts === undefined) return NaN;
+    if (typeof ts === "number") return ts > 1e12 ? ts : ts * 1000;
+    const raw = String(ts).trim();
+    if (!raw) return NaN;
+    if (/^\d+$/.test(raw)) {
+      const n = Number(raw);
+      return n > 1e12 ? n : n * 1000;
+    }
+    const iso = raw.replace(" ", "T");
+    // MariaDB / SQLite datetime columns returned from UTC queries have no timezone suffix; treat as UTC ("Z")
+    const withTz = /([zZ]|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : `${iso}Z`;
+    return Date.parse(withTz);
+  }
+
   function build24hSeriesForSensor(s, dbReadings = []) {
     const baseT = Number(s?.current_temperature ?? 21.5);
     const baseH = Number(s?.current_humidity ?? 45.0);
@@ -189,7 +204,7 @@ export async function createNextFloorHass(options = {}) {
         const rIdx = dbReadings.length === 1 ? 0 : Math.min(dbReadings.length - 1, Math.round((i / 23) * (dbReadings.length - 1)));
         const rObj = dbReadings[rIdx];
         if (rObj?.timestamp) {
-          const parsed = Date.parse(String(rObj.timestamp).replace(" ", "T"));
+          const parsed = parseDbTimestampMs(rObj.timestamp);
           if (Number.isFinite(parsed)) tsMs = parsed;
         }
         if (hasRealT) tVal = rObj?.temperature !== null && rObj?.temperature !== undefined ? Number(rObj.temperature) : validT[Math.min(validT.length - 1, rIdx)] ?? baseT;
@@ -238,7 +253,8 @@ export async function createNextFloorHass(options = {}) {
 
   async function fetchSensorHistory(identifier, hours = 24) {
     try {
-      const res = await fetch(`/api/v1/sensors/${encodeURIComponent(identifier)}/history?limit=200&hours=${hours}`);
+      const lim = hours > 24 ? 2200 : 300;
+      const res = await fetch(`/api/v1/sensors/${encodeURIComponent(identifier)}/history?limit=${lim}&hours=${hours}`);
       if (res.ok) {
         const data = await res.json();
         const s = dbSensorsCache.find(item => item.identifier === identifier) || {
@@ -247,7 +263,9 @@ export async function createNextFloorHass(options = {}) {
           current_temperature: data.readings?.at(-1)?.temperature ?? 21.5,
           current_humidity: data.readings?.at(-1)?.humidity ?? 45.0
         };
-        sensorHistoryCache[identifier] = build24hSeriesForSensor(s, data.readings || []);
+        const built = build24hSeriesForSensor(s, data.readings || []);
+        built.hours = hours;
+        sensorHistoryCache[identifier] = built;
         return sensorHistoryCache[identifier];
       }
     } catch (e) {}
@@ -585,7 +603,7 @@ export async function createNextFloorHass(options = {}) {
 
   function computeSunPosition(ms, lat, lon) {
     const rad = Math.PI / 180;
-    const n = ms / 864e5 + 2440587.5 - 2451545;
+    const n = (ms / 864e5 + 2440587.5 - 2451545) / 36525;
     const L = ((280.46646 + n * (36000.76983 + n * 3.032e-4)) % 360 + 360) % 360;
     const M = 357.52911 + n * (35999.05029 - 1.537e-4 * n);
     const e = 0.016708634 - n * (4.2037e-8 + 1.267e-10 * n);
@@ -605,8 +623,21 @@ export async function createNextFloorHass(options = {}) {
     return { azimuth: Math.round(azimuth * 100) / 100, elevation: Math.round(elevation * 100) / 100 };
   }
 
+  let siteLat = -2.57555;
+  let siteLon = 140.686402;
+  try {
+    const sRes = await fetch("/api/v1/settings");
+    if (sRes.ok) {
+      const sData = await sRes.json();
+      const pLat = parseFloat(sData.site_latitude);
+      const pLon = parseFloat(sData.site_longitude);
+      if (Number.isFinite(pLat)) siteLat = pLat;
+      if (Number.isFinite(pLon)) siteLon = pLon;
+    }
+  } catch (e) {}
+
   function updateLiveSunEntity() {
-    const pos = computeSunPosition(Date.now(), -6.2, 106.8);
+    const pos = computeSunPosition(Date.now(), siteLat, siteLon);
     statesMap["sun.sun"] = {
       entity_id: "sun.sun",
       state: pos.elevation > -0.833 ? "above_horizon" : "below_horizon",
@@ -629,9 +660,9 @@ export async function createNextFloorHass(options = {}) {
     selectedTheme: { dark: true },
     themes: { darkMode: true },
     config: {
-      latitude: -6.2,
-      longitude: 106.8,
-      time_zone: "Asia/Jakarta",
+      latitude: siteLat,
+      longitude: siteLon,
+      time_zone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Jayapura",
       unit_system: { temperature: "°C" }
     },
     user: {
@@ -833,10 +864,6 @@ export async function createNextFloorHass(options = {}) {
         return { readings: {} };
       }
 
-      if (type.startsWith("neonplan3d/timetravel/")) {
-        return { available: false, rows: [], events: [] };
-      }
-
       if (type.startsWith("neonplan3d/locate/")) {
         return { available: false, scanners: [], tags: [] };
       }
@@ -845,12 +872,57 @@ export async function createNextFloorHass(options = {}) {
         return { enabled: false };
       }
 
-      // 8b. NeonPlan 3D Time Travel History (real SQL/DB readings + sun.sun solar trajectory)
+      // 8b. NeonPlan 3D Time Travel History (real SQL/DB readings + sun.sun solar trajectory + 5-min stats)
       if (type === "neonplan3d/timetravel/history") {
         const startSec = Number(msg.start_time ?? (Date.now() / 1000 - 86400));
         const endSec = Number(msg.end_time ?? (Date.now() / 1000));
+        const spanSec = Math.max(60, Math.round(endSec - startSec));
+        const nowSec = Math.floor(Date.now() / 1000);
+        const hoursReq = Math.max(24, Math.ceil((nowSec - startSec) / 3600) + 1);
         const reqIds = msg.entity_ids || [];
+        const statIds = msg.statistic_ids || [];
         const entitiesOut = {};
+        const statsOut = {};
+
+        async function getSensorPairsForEntity(eid) {
+          const st = statesMap[eid];
+          const ident = st?.attributes?.db_identifier || eid.replace(/^sensor\./, "").replace(/_(temp|humidity|power|ampere|volt)$/, "");
+          const s = dbSensorsCache.find(item => item.identifier === ident);
+          const cached = sensorHistoryCache[ident];
+          const series = (cached && (cached.hours || 24) >= hoursReq)
+            ? cached
+            : (await fetchSensorHistory(ident, hoursReq) || cached || (s ? build24hSeriesForSensor(s, []) : null));
+          if (!series) return { pairs: [], attrs: st?.attributes || {}, fallback: st ? Number(st.state) : NaN };
+          const isHum = eid.endsWith("_humidity");
+          const isPower = eid.endsWith("_power");
+          const isAmp = eid.endsWith("_ampere");
+          const isVolt = eid.endsWith("_volt");
+          const raw = Array.isArray(series.rawReadings) ? series.rawReadings : [];
+          const pairs = [];
+          const attrs = st?.attributes || {};
+
+          if (raw.length > 0) {
+            raw.forEach((r, idx) => {
+              const val = isHum ? r.humidity : isPower ? r.raw_data?.power_kw : isAmp ? r.raw_data?.amperes : isVolt ? r.raw_data?.volts : r.temperature;
+              if (val === null || val === undefined || !Number.isFinite(Number(val))) return;
+              const parsedMs = parseDbTimestampMs(r.timestamp);
+              const tsSec = Number.isFinite(parsedMs) ? (parsedMs / 1000) : (startSec + (spanSec * idx) / Math.max(1, raw.length - 1));
+              const off = Math.max(0, Math.min(spanSec, Math.round(tsSec - startSec)));
+              pairs.push([off, Number(val)]);
+            });
+          }
+          if (pairs.length === 0) {
+            const pts = isHum ? series.humPts : series.tempPts;
+            pts.forEach((val, idx) => {
+              if (!Number.isFinite(Number(val))) return;
+              const off = Math.round((spanSec * idx) / Math.max(1, pts.length - 1));
+              pairs.push([off, Number(val)]);
+            });
+          }
+          pairs.sort((a, b) => a[0] - b[0]);
+          const fallback = pairs.length > 0 ? pairs[0][1] : (st ? Number(st.state) : NaN);
+          return { pairs, attrs, fallback };
+        }
 
         for (const eid of reqIds) {
           if (eid === "sun.sun") {
@@ -859,11 +931,11 @@ export async function createNextFloorHass(options = {}) {
             const tabArr = [];
             const step = 900; // 15-min steps
             for (let ts = startSec; ts <= endSec; ts += step) {
-              const pos = computeSunPosition(ts * 1000, -6.2, 106.8);
+              const pos = computeSunPosition(ts * 1000, siteLat, siteLon);
               const stVal = pos.elevation > -0.833 ? "above_horizon" : "below_horizon";
               tArr.push(Math.round(ts - startSec));
               vArr.push(tabArr.length);
-              tabArr.push({ s: stVal, a: { azimuth: pos.azimuth, elevation: pos.elevation, friendly_name: "Sun" } });
+              tabArr.push([stVal, { azimuth: pos.azimuth, elevation: pos.elevation, friendly_name: "Sun" }]);
             }
             entitiesOut["sun.sun"] = { t: tArr, v: vArr, tab: tabArr };
             continue;
@@ -872,59 +944,65 @@ export async function createNextFloorHass(options = {}) {
           const st = statesMap[eid];
           if (!eid.startsWith("sensor.")) {
             if (st) {
-              entitiesOut[eid] = { t: [0], v: [0], tab: [{ s: String(st.state), a: st.attributes || {} }] };
+              entitiesOut[eid] = { t: [0], v: [0], tab: [[String(st.state), st.attributes || {}]] };
             }
             continue;
           }
 
-          const ident = st?.attributes?.db_identifier || eid.replace(/^sensor\./, "").replace(/_(temp|humidity|power|ampere|volt)$/, "");
-          const s = dbSensorsCache.find(item => item.identifier === ident);
-          const series = sensorHistoryCache[ident] || await fetchSensorHistory(ident) || (s ? build24hSeriesForSensor(s, []) : null);
-          if (series) {
-            const isHum = eid.endsWith("_humidity");
-            const isPower = eid.endsWith("_power");
-            const isAmp = eid.endsWith("_ampere");
-            const isVolt = eid.endsWith("_volt");
-            const raw = Array.isArray(series.rawReadings) ? series.rawReadings : [];
+          const { pairs, attrs } = await getSensorPairsForEntity(eid);
+          if (pairs.length > 0) {
+            if (pairs[0][0] > 0) pairs.unshift([0, pairs[0][1]]);
             const tArr = [];
             const vArr = [];
             const tabArr = [];
-            const attrs = st?.attributes || {};
-
-            if (raw.length > 0) {
-              raw.forEach((r, idx) => {
-                const val = isHum ? r.humidity : isPower ? r.raw_data?.power_kw : isAmp ? r.raw_data?.amperes : isVolt ? r.raw_data?.volts : r.temperature;
-                if (val === null || val === undefined) return;
-                const parsedMs = r.timestamp ? Date.parse(String(r.timestamp).replace(" ", "T")) : NaN;
-                const tsSec = Number.isFinite(parsedMs) ? (parsedMs / 1000) : (startSec + ((endSec - startSec) * idx) / Math.max(1, raw.length - 1));
-                const off = Math.max(0, Math.round(tsSec - startSec));
-                tArr.push(off);
-                vArr.push(tabArr.length);
-                tabArr.push({ s: String(val), a: attrs });
-              });
-            }
-            if (tArr.length === 0) {
-              const pts = isHum ? series.humPts : series.tempPts;
-              pts.forEach((val, idx) => {
-                const off = Math.round(((endSec - startSec) * idx) / Math.max(1, pts.length - 1));
-                tArr.push(off);
-                vArr.push(tabArr.length);
-                tabArr.push({ s: String(val), a: attrs });
-              });
+            for (const [off, nval] of pairs) {
+              tArr.push(off);
+              vArr.push(tabArr.length);
+              tabArr.push([String(nval), attrs]);
             }
             entitiesOut[eid] = { t: tArr, v: vArr, tab: tabArr };
           }
         }
 
+        // Populate 5-minute bucketed stats for numeric sensors (statistic_ids)
+        const statStep = 300;
+        const numBuckets = Math.max(1, Math.ceil(spanSec / statStep) + 1);
+        for (const eid of statIds) {
+          const { pairs, fallback } = await getSensorPairsForEntity(eid);
+          if (pairs.length === 0 && !Number.isFinite(fallback)) continue;
+          const sums = new Array(numBuckets).fill(0);
+          const counts = new Array(numBuckets).fill(0);
+          for (const [off, nval] of pairs) {
+            const b = Math.max(0, Math.min(numBuckets - 1, Math.floor(off / statStep)));
+            sums[b] += nval;
+            counts[b] += 1;
+          }
+          const mean = new Array(numBuckets).fill(null);
+          let lastVal = Number.isFinite(fallback) ? fallback : null;
+          for (let b = 0; b < numBuckets; b++) {
+            if (counts[b] > 0) {
+              lastVal = Math.round((sums[b] / counts[b]) * 100) / 100;
+              mean[b] = lastVal;
+            } else if (lastVal !== null) {
+              mean[b] = lastVal;
+            }
+          }
+          statsOut[eid] = { start: startSec, step: statStep, mean };
+        }
+
         return {
           day_start: startSec,
           end: endSec,
-          oldest: startSec,
+          oldest: nowSec - 30 * 86400,
           keep_days: 30,
           entities: entitiesOut,
-          stats: {},
+          stats: statsOut,
           missing: []
         };
+      }
+
+      if (type.startsWith("neonplan3d/timetravel/")) {
+        return { available: false, rows: [], events: [] };
       }
 
       // 8. 24-Hour Sensor History & Statistics from Database (used by 24h Chart & Time Travel)

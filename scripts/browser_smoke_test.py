@@ -369,6 +369,21 @@ def run_smoke_test():
                 raise RuntimeError(f"Expected virtual light state 'on', got '{light_state}'")
             print("  ✓ Virtual lights toggle ON/OFF in 3D scene & persist to DB.")
 
+            # Verify Time Travel loads real numeric sensor readings (zero 'unavailable'/'unknown')
+            page.evaluate("() => window.nfPanel.toggleTimeTravel()")
+            page.wait_for_function("() => window.nfPanel?.tt?.session?.state === 'ready'", timeout=10000)
+            tt_check = page.evaluate("""() => {
+                const states = window.nfPanel.tt.session.hass?.states || {};
+                const sensors = Object.entries(states).filter(([k]) => k.startsWith('sensor.') && (k.endsWith('_temp') || k.endsWith('_humidity')));
+                const bad = sensors.filter(([, v]) => !v || v.state === 'unavailable' || v.state === 'unknown' || !Number.isFinite(Number(v.state)));
+                return { total: sensors.length, bad: bad.map(([k, v]) => [k, v?.state]), sample: sensors.slice(0, 3).map(([k, v]) => [k, v?.state]) };
+            }""")
+            page.evaluate("() => window.nfPanel.tt.stop()")
+            page.wait_for_timeout(300)
+            if tt_check["total"] == 0 or len(tt_check["bad"]) > 0:
+                raise RuntimeError(f"Time Travel had Unavailable/invalid sensor readings: {tt_check}")
+            print(f"  ✓ Time Travel verified: {tt_check['total']} sensors loaded with real numeric values (sample: {tt_check['sample']}).")
+
             # 6. Test 3D Cabling (Below Floor, In Wall, Ceiling for Power, FO, Ethernet) in Editor mode
             print(">> [6/8] Testing 3D Cabling (Power, FO, Ethernet in Below Floor / Wall / Ceiling)...")
             page.locator("#btnEditMode").click()
