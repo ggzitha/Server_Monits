@@ -282,9 +282,26 @@
           </select>
         </label>
         <label id="wrapNewSensorSql" style="grid-column: span 2;">
-          <span>{{ 'Query SQL (Opsional)' if current_lang == 'id' else 'SQL Query (Optional)' }}</span>
-          <textarea id="newSensorSqlQuery" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time" style="font-family:monospace; font-size:0.72rem;"></textarea>
+          <span>{{ 'Query SQL (Gabungan / Utama)' if current_lang == 'id' else 'SQL Query (Combined or Primary)' }}</span>
+          <textarea id="newSensorSqlQuery" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature, Humidity FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time" style="font-family:monospace; font-size:0.72rem;"></textarea>
         </label>
+        <label id="wrapNewSensorSqlHum" style="grid-column: span 2;">
+          <span>{{ 'Query SQL Kelembaban #2 (Opsional jika terpisah)' if current_lang == 'id' else 'Humidity SQL Query #2 (Optional if separate)' }}</span>
+          <textarea id="newSensorSqlQueryHumidity" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Humidity FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time" style="font-family:monospace; font-size:0.72rem;"></textarea>
+        </label>
+        <div style="grid-column: span 2; display:flex; flex-direction:column; gap:6px; padding-top:4px; border-top:1px solid rgba(0,240,255,0.14);">
+          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:0.74rem; color:#cbd5e1;">
+            <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; flex-direction:row;">
+              <input id="newSensorGrafanaLink" type="checkbox" />
+              <span>{{ 'Tautkan Klik Grafik ke URL (Grafana)' if current_lang == 'id' else 'Linked URL on Chart Click' }}</span>
+            </label>
+            <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; flex-direction:row;">
+              <input id="newSensorGrafanaNewTab" type="checkbox" checked />
+              <span>{{ 'Buka di tab baru' if current_lang == 'id' else 'Open in new tab' }}</span>
+            </label>
+          </div>
+          <input id="newSensorGrafanaUrl" type="url" class="monits-input" placeholder="http://10.101.0.1:3000/d/..." />
+        </div>
       </div>
       <button id="btnPlaceSensorIn3D" class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:7px;" onclick="window.handleAddAndPlaceSensor()">
         ➕ {{ 'Tempatkan Sensor di 3D & Simpan ke Database' if current_lang == 'id' else 'Place Sensor at (X, Z, Y) in 3D & Save to DB' }}
@@ -294,11 +311,16 @@
 
     <!-- Section 2: Direct Sensor Readings from Database -->
     <div>
-      <h4 class="monits-section-title">
-        {{ '2. Nilai Sensor Aktif di Database' if current_lang == 'id' else '2. Live Database Sensors' }}
-      </h4>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <h4 class="monits-section-title" style="margin:0;">
+          {{ '2. Nilai Sensor Aktif di Database' if current_lang == 'id' else '2. Live Database Sensors' }}
+        </h4>
+        <button type="button" id="btnSyncAllSql" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 8px;" onclick="window.handleSyncAllSqlSensors(this)">
+          🔄 {{ 'Sinkron SQL' if current_lang == 'id' else 'Sync SQL' }}
+        </button>
+      </div>
       <div style="font-size: 0.72rem; color: #94a3b8; margin-bottom: 8px;">
-        {{ 'Ubah nilai di bawah untuk menyimpan langsung ke database dan memperbarui peta panas 3D secara real-time:' if current_lang == 'id' else 'Edit values below to write directly to the database and update 3D room markers & heatmaps in real time:' }}
+        {{ 'Ubah nilai manual atau hubungkan Sumber Data & Query SQL per sensor:' if current_lang == 'id' else 'Edit manual values or bind each sensor to a Grafana Data Source & SQL query:' }}
       </div>
       <div id="dbSensorsList"></div>
     </div>
@@ -392,7 +414,7 @@
 </aside>
 
 <script type="module">
-  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261119f";
+  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261119i";
 
   const currentLang = "{{ current_lang|default('en') }}";
   const isId = currentLang === "id";
@@ -610,6 +632,10 @@
     const volts = document.getElementById("newSensorVolt")?.value;
     const dataSourceId = document.getElementById("newSensorDataSource")?.value || null;
     const sqlQuery = document.getElementById("newSensorSqlQuery")?.value?.trim() || null;
+    const sqlQueryHumidity = document.getElementById("newSensorSqlQueryHumidity")?.value?.trim() || null;
+    const grafanaLinkEnabled = Boolean(document.getElementById("newSensorGrafanaLink")?.checked);
+    const grafanaNewTab = Boolean(document.getElementById("newSensorGrafanaNewTab")?.checked ?? true);
+    const grafanaUrl = document.getElementById("newSensorGrafanaUrl")?.value?.trim() || "";
 
     const placed = await window.monitsApi.addAndPlaceSensorIn3D({
       name,
@@ -625,14 +651,29 @@
       amperes,
       volts,
       dataSourceId,
-      sqlQuery
+      sqlQuery,
+      sqlQueryHumidity,
+      grafanaLinkEnabled,
+      grafanaNewTab,
+      grafanaUrl
     });
 
     const msgEl = document.getElementById("sensorPlaceStatusMsg");
     if (placed && msgEl) {
-      msgEl.textContent = isId
+      const syncInfo = window.monitsApi.getLastSqlSync?.();
+      let syncNote = "";
+      if (syncInfo && syncInfo.ok) {
+        syncNote = ` · SQL Synced (${JSON.stringify(syncInfo.metrics)})`;
+        msgEl.style.color = "#4ade80";
+      } else if (syncInfo && syncInfo.error) {
+        syncNote = ` · ⚠ SQL Sync: ${syncInfo.error}`;
+        msgEl.style.color = "#fbbf24";
+      } else {
+        msgEl.style.color = "#4ade80";
+      }
+      msgEl.textContent = (isId
         ? `✓ Sensor "${placed.name}" (${sensorType}) ditempatkan di (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & tersimpan di DB!`
-        : `✓ Placed "${placed.name}" (${sensorType}) at (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & saved to DB!`;
+        : `✓ Placed "${placed.name}" (${sensorType}) at (X=${placed.x}m, Z=${placed.z}m, Y=${placed.mountY}m) & saved to DB!`) + syncNote;
       renderDevicesDrawer();
     }
   };
@@ -642,7 +683,7 @@
     return "#" + rgb.slice(0, 3).map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
   }
 
-  function renderDevicesDrawer() {
+  async function renderDevicesDrawer() {
     if (!window.monitsApi) return;
 
     // Populate Floor & Room dropdowns dynamically from active 3D building
@@ -684,12 +725,16 @@
     const sensorsContainer = document.getElementById("dbSensorsList");
     const sensors = window.monitsApi.getSensors() || [];
     const dsSelect = document.getElementById("newSensorDataSource");
-    if (dsSelect && dsSelect.options.length <= 1) {
-      fetch("/api/v1/data-sources").then(r => r.ok ? r.json() : []).then(list => {
-        if (!Array.isArray(list)) return;
-        dsSelect.innerHTML = `<option value="">-- Local DB (Manual / API) --</option>` +
-          list.map(d => `<option value="${d.id}">${d.name} (${d.source_type})</option>`).join("");
-      }).catch(() => {});
+    if (!window._cachedDataSources) {
+      try {
+        const r = await fetch("/api/v1/data-sources");
+        if (r.ok) window._cachedDataSources = await r.json();
+      } catch (e) {}
+    }
+    const dsList = Array.isArray(window._cachedDataSources) ? window._cachedDataSources : [];
+    if (dsSelect && dsSelect.options.length <= 1 && dsList.length > 0) {
+      dsSelect.innerHTML = `<option value="">-- Local DB (Manual / API) --</option>` +
+        dsList.map(d => `<option value="${d.id}">${d.name} (${d.source_type})</option>`).join("");
     }
 
     const typeLabels = {
@@ -757,20 +802,49 @@
             </div>
           `;
         }
+        const dsOptions = `<option value="">-- Local DB (Manual) --</option>` +
+          dsList.map(d => `<option value="${d.id}" ${String(s.data_source_id || "") === String(d.id) ? "selected" : ""}>${d.name} (${d.source_type})</option>`).join("");
+        const typeOptions = Object.entries(typeLabels).map(([k, lbl]) =>
+          `<option value="${k}" ${sType === k ? "selected" : ""}>${lbl}</option>`
+        ).join("");
+        const hasSql = Boolean(s.data_source_id && s.sql_query);
         return `
-          <div class="monits-sensor-grid" style="grid-template-columns: ${cols}; align-items:end;">
-            <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" title="${s.name} · ${typeLabels[sType] || sType}" onclick="window.onFocusSensorCard('${s.identifier}')">
-              <strong style="color:#e2e8f0;">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
-              <div style="font-size:0.66rem; color:#38bdf8;">${s.area_id}${coordsLabel}</div>
-              <div style="font-size:0.62rem; color:#94a3b8;">${typeLabels[sType] || sType}</div>
+          <div style="background: rgba(10, 17, 34, 0.72); border: 1px solid rgba(0, 240, 255, 0.16); border-radius: 8px; padding: 8px; margin-bottom: 8px;">
+            <div class="monits-sensor-grid" style="grid-template-columns: ${cols}; align-items:end; margin:0; padding:0; border:none; background:none;">
+              <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" title="${s.name} · ${typeLabels[sType] || sType}" onclick="window.onFocusSensorCard('${s.identifier}')">
+                <strong style="color:#e2e8f0;">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
+                <div style="font-size:0.66rem; color:#38bdf8;">${s.area_id}${coordsLabel}${hasSql ? ' · <span style="color:#4ade80;">SQL</span>' : ''}</div>
+                <div style="font-size:0.62rem; color:#94a3b8;">${typeLabels[sType] || sType}</div>
+              </div>
+              ${fieldsHtml}
+              <button class="monits-pill-btn" title="Show 3D Gauge & 24h Chart" onclick="window.onFocusSensorCard('${s.identifier}')">
+                📈
+              </button>
+              <button class="monits-pill-btn on" title="Save & Sync Sensor" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}')">
+                💾
+              </button>
             </div>
-            ${fieldsHtml}
-            <button class="monits-pill-btn" title="Show 3D Gauge & 24h Chart" onclick="window.onFocusSensorCard('${s.identifier}')">
-              📈
-            </button>
-            <button class="monits-pill-btn on" title="Save to Database" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}', '${sType}')">
-              💾
-            </button>
+            <details style="margin-top:6px; font-size:0.7rem;" ${hasSql ? 'open' : ''}>
+              <summary style="cursor:pointer; color:#94a3b8; user-select:none;">🗄️ Edit Type / Data Source / SQL Query</summary>
+              <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:6px;">
+                <select id="inp_type_${s.identifier}" class="monits-input" style="font-size:0.7rem;">${typeOptions}</select>
+                <select id="inp_ds_${s.identifier}" class="monits-input" style="font-size:0.7rem;">${dsOptions}</select>
+              </div>
+              <textarea id="inp_sql_${s.identifier}" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature, Humidity FROM ..." style="margin-top:6px; width:100%; font-family:monospace; font-size:0.68rem;">${(s.sql_query || "").replace(/</g, "&lt;")}</textarea>
+              <textarea id="inp_sql_hum_${s.identifier}" rows="2" class="monits-input" placeholder="Optional Humidity Query #2: SELECT Date_Time AS &quot;time&quot;, Humidity FROM ..." style="margin-top:4px; width:100%; font-family:monospace; font-size:0.68rem;">${(s.sql_query_humidity || "").replace(/</g, "&lt;")}</textarea>
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:6px; font-size:0.68rem; color:#cbd5e1;">
+                <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; flex-direction:row;">
+                  <input id="inp_glink_${s.identifier}" type="checkbox" ${s.grafana_link_enabled ? "checked" : ""} />
+                  <span>Linked URL</span>
+                </label>
+                <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; flex-direction:row;">
+                  <input id="inp_gnewtab_${s.identifier}" type="checkbox" ${s.grafana_new_tab !== false ? "checked" : ""} />
+                  <span>Open in new tab</span>
+                </label>
+              </div>
+              <input id="inp_gurl_${s.identifier}" type="url" class="monits-input" placeholder="Grafana Target URL (http://...)" value="${(s.grafana_url || "").replace(/"/g, "&quot;")}" style="margin-top:4px; width:100%; font-size:0.68rem;" />
+              <div id="inp_sql_msg_${s.identifier}" style="font-size:0.68rem; margin-top:4px; color:#94a3b8;"></div>
+            </details>
           </div>
         `;
       }).join("");
@@ -804,8 +878,26 @@
     renderDevicesDrawer();
   };
 
-  window.onSaveDbSensor = async function(identifier, areaId, sensorType) {
+  window.handleSyncAllSqlSensors = async function(btn) {
     if (!window.monitsApi) return;
+    if (btn) { btn.disabled = true; btn.textContent = "⏳..."; }
+    try {
+      await window.monitsApi.syncSqlSensors();
+      await renderDevicesDrawer();
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = isId ? "🔄 Sinkron SQL" : "🔄 Sync SQL"; }
+    }
+  };
+
+  window.onSaveDbSensor = async function(identifier, areaId) {
+    if (!window.monitsApi) return;
+    const sensorType = document.getElementById(`inp_type_${identifier}`)?.value || "thermohygrometer";
+    const dataSourceId = document.getElementById(`inp_ds_${identifier}`)?.value ?? "";
+    const sqlQuery = document.getElementById(`inp_sql_${identifier}`)?.value ?? "";
+    const sqlQueryHumidity = document.getElementById(`inp_sql_hum_${identifier}`)?.value ?? "";
+    const grafanaLinkEnabled = Boolean(document.getElementById(`inp_glink_${identifier}`)?.checked);
+    const grafanaNewTab = Boolean(document.getElementById(`inp_gnewtab_${identifier}`)?.checked ?? true);
+    const grafanaUrl = document.getElementById(`inp_gurl_${identifier}`)?.value?.trim() ?? "";
     const t = document.getElementById(`inp_t_${identifier}`)?.value;
     const h = document.getElementById(`inp_h_${identifier}`)?.value;
     const p = document.getElementById(`inp_p_${identifier}`)?.value;
@@ -815,13 +907,30 @@
       identifier,
       area_id: areaId,
       sensor_type: sensorType,
+      data_source_id: dataSourceId,
+      sql_query: sqlQuery,
+      sql_query_humidity: sqlQueryHumidity,
+      grafana_link_enabled: grafanaLinkEnabled,
+      grafana_new_tab: grafanaNewTab,
+      grafana_url: grafanaUrl,
       temperature: t,
       humidity: h,
       power_kw: p,
       amperes: a,
       volts: v
     });
-    renderDevicesDrawer();
+    const syncInfo = window.monitsApi.getLastSqlSync?.();
+    await renderDevicesDrawer();
+    const msgEl = document.getElementById(`inp_sql_msg_${identifier}`);
+    if (msgEl && syncInfo) {
+      if (syncInfo.ok) {
+        msgEl.style.color = "#4ade80";
+        msgEl.textContent = `✓ Synced from SQL (${JSON.stringify(syncInfo.metrics)})`;
+      } else if (syncInfo.error) {
+        msgEl.style.color = "#fbbf24";
+        msgEl.textContent = `⚠ ${syncInfo.error}`;
+      }
+    }
   };
 
   function renderCablesDrawer() {
@@ -928,7 +1037,7 @@
 
   async function init() {
     try {
-      await import("/static/neonplan3d/neonplan3d.js?v=20261119f");
+      await import("/static/neonplan3d/neonplan3d.js?v=20261119g");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {

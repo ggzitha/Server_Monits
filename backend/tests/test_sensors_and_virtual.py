@@ -204,4 +204,74 @@ async def test_db_sensors_and_virtual_states(client, db_session):
     )
     assert q_bad.status_code == 400
 
+    # 9. Create saved DataSource, test it, and bind a sensor to read real value from SQL
+    ds_res = await client.post(
+        "/api/v1/data-sources",
+        headers=admin_headers,
+        json={
+            "name": "Lab SQLite Sensor DB",
+            "source_type": "sqlite",
+            "config": {"path": db_path},
+            "is_active": True,
+        },
+    )
+    assert ds_res.status_code == 201
+    ds_id = ds_res.json()["id"]
+
+    test_ds_res = await client.post(f"/api/v1/data-sources/{ds_id}/test", headers=admin_headers)
+    assert test_ds_res.status_code == 200
+    assert test_ds_res.json()["success"] is True
+
+    bind_res = await client.post(
+        "/api/v1/sensors/readings",
+        headers=admin_headers,
+        json={
+            "identifier": "sql_temp_sensor_01",
+            "name": "SQL Temp Sensor 01",
+            "sensor_type": "thermometer",
+            "area_id": "server_alpha",
+            "data_source_id": ds_id,
+            "sql_query": 'SELECT Date_Time AS "time", Temperature FROM rtime_suhu ORDER BY Date_Time DESC LIMIT 1;',
+        },
+    )
+    assert bind_res.status_code == 200
+    bind_data = bind_res.json()
+    assert bind_data["sql_sync"]["ok"] is True
+    assert bind_data["temperature"] == 22.4
+
+    # 10. Combined Temperature + Humidity via two queries & external SQL history without local duplication
+    conn2 = sqlite3.connect(db_path)
+    conn2.execute("ALTER TABLE rtime_suhu ADD COLUMN Humidity REAL")
+    conn2.execute("UPDATE rtime_suhu SET Humidity = 48.7")
+    conn2.execute("INSERT INTO rtime_suhu VALUES ('2026-11-19 10:05:00', 23.1, 49.5)")
+    conn2.commit()
+    conn2.close()
+
+    th_res = await client.post(
+        "/api/v1/sensors/readings",
+        headers=admin_headers,
+        json={
+            "identifier": "sql_thermohygro_01",
+            "name": "SQL Thermohygro 01",
+            "sensor_type": "thermohygrometer",
+            "area_id": "server_alpha",
+            "data_source_id": ds_id,
+            "sql_query": 'SELECT Date_Time AS "time", Temperature FROM rtime_suhu ORDER BY Date_Time',
+            "sql_query_humidity": 'SELECT Date_Time AS "time", Humidity FROM rtime_suhu ORDER BY Date_Time',
+        },
+    )
+    assert th_res.status_code == 200
+    th_data = th_res.json()
+    assert th_data["sql_sync"]["ok"] is True
+    assert th_data["temperature"] == 23.1
+    assert th_data["humidity"] == 49.5
+
+    hist_ext = await client.get("/api/v1/sensors/sql_thermohygro_01/history", headers=admin_headers)
+    assert hist_ext.status_code == 200
+    hist_ext_data = hist_ext.json()
+    assert hist_ext_data["source"] == "external_sql"
+    assert len(hist_ext_data["readings"]) == 2
+    assert hist_ext_data["readings"][0]["temperature"] == 22.4
+    assert hist_ext_data["readings"][1]["humidity"] == 49.5
+
 

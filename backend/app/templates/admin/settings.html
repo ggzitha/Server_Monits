@@ -532,8 +532,8 @@
             </div>
           </div>
           <div style="display:flex; gap:0.45rem; align-items:center;">
-            <button type="button" class="btn btn-sm" onclick="testExistingDataSource(${d.id}, this)">Test</button>
-            <button type="button" class="btn btn-sm" style="color:#ff5566; border-color:rgba(255,51,68,0.35);" onclick="deleteExistingDataSource(${d.id})">Delete</button>
+            <button type="button" class="btn btn-sm" onclick="testExistingDataSource('${d.id}', this)">Test</button>
+            <button type="button" class="btn btn-sm" style="color:#ff5566; border-color:rgba(255,51,68,0.35);" onclick="deleteExistingDataSource('${d.id}')">Delete</button>
           </div>
         </div>
       `;
@@ -582,17 +582,22 @@
     const prev = btn.innerText;
     btn.disabled = true;
     btn.innerText = 'Testing...';
+    const st = document.getElementById('dsTestStatus');
     try {
-      const res = await fetch(`/api/v1/data-sources/${id}/test`, {
+      const res = await fetch(`/api/v1/data-sources/${encodeURIComponent(id)}/test`, {
         method: 'POST',
         headers: { 'X-CSRF-Token': getCsrfToken() }
       });
-      const data = await res.json();
-      const ok = Boolean(data.success ?? data.ok);
-      const st = document.getElementById('dsTestStatus');
+      const data = await res.json().catch(() => ({}));
+      const ok = res.ok && Boolean(data.success ?? data.ok);
       if (st) {
-        st.innerText = `${ok ? '✓' : '✕'} ${data.message || data.error || ''}`;
+        st.innerText = `${ok ? '✓' : '✕'} ${data.message || data.error || data.detail || ('HTTP ' + res.status)}`;
         st.style.color = ok ? '#10b981' : '#ef4444';
+      }
+    } catch (err) {
+      if (st) {
+        st.innerText = `✕ ${err.message || 'Test request failed'}`;
+        st.style.color = '#ef4444';
       }
     } finally {
       btn.disabled = false;
@@ -601,7 +606,7 @@
   }
 
   async function deleteExistingDataSource(id) {
-    const res = await fetch(`/api/v1/data-sources/${id}`, {
+    const res = await fetch(`/api/v1/data-sources/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       headers: { 'X-CSRF-Token': getCsrfToken() }
     });

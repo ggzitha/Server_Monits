@@ -3,7 +3,9 @@ sensors.py - Database-Backed Sensor Telemetry & Virtual Device Control API
 Provides direct DB sensor readings, historical sparkline time-series, and virtual light/switch persistence
 completely detached from Home Assistant.
 """
+import copy
 import json
+import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -12,6 +14,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.api.deps import get_current_user, get_db
+from backend.app.api.v1.data_sources import SENSITIVE_KEYS, _execute_sql_query
+from backend.app.core.security import decrypt_secret
+from backend.app.db.models.data_source import DataSource
 from backend.app.db.models.floor_plan import FloorPlan
 from backend.app.db.models.sensor import Sensor
 from backend.app.db.models.system_config import SystemConfig
@@ -170,6 +175,10 @@ class DirectReadingInput(BaseModel):
     battery_level: Optional[float] = None
     data_source_id: Optional[str] = None
     sql_query: Optional[str] = None
+    sql_query_humidity: Optional[str] = None
+    grafana_link_enabled: Optional[bool] = None
+    grafana_new_tab: Optional[bool] = None
+    grafana_url: Optional[str] = None
 
 
 class VirtualStateUpdate(BaseModel):
@@ -216,6 +225,10 @@ async def list_sensors(
                 "wifi_dbm": meta.get("wifi_dbm"),
                 "data_source_id": meta.get("data_source_id"),
                 "sql_query": meta.get("sql_query"),
+                "sql_query_humidity": meta.get("sql_query_humidity"),
+                "grafana_link_enabled": bool(meta.get("grafana_link_enabled", False)),
+                "grafana_new_tab": bool(meta.get("grafana_new_tab", True)),
+                "grafana_url": meta.get("grafana_url", ""),
                 "battery_level": s.battery_level,
                 "status": s.status,
                 "temp_max_warning": s.temp_max_warning,
@@ -228,31 +241,186 @@ async def list_sensors(
     return out
 
 
+def _extract_metrics_from_row(row: Dict[str, Any], sensor_type: str) -> Dict[str, float]:
+    """Map SQL result row columns to sensor metrics by column name or sensor_type fallback."""
+    out: Dict[str, float] = {}
+    numeric_cols: List[tuple[str, float]] = []
+    for k, v in row.items():
+        kl = str(k).strip().lower()
+        if kl in ("time", "date_time", "datetime", "timestamp", "recorded_at", "ts"):
+            continue
+        try:
+            num = float(v)
+        except (TypeError, ValueError):
+            continue
+        numeric_cols.append((kl, num))
+        if any(tok in kl for tok in ("temp", "suhu")):
+            out["temperature"] = num
+        elif any(tok in kl for tok in ("hum", "rh", "kelembaban")):
+            out["humidity"] = num
+        elif any(tok in kl for tok in ("power", "kw", "watt")):
+            out["power_kw"] = num
+        elif any(tok in kl for tok in ("amp", "current", "arus")):
+            out["amperes"] = num
+        elif any(tok in kl for tok in ("volt", "tegangan")):
+            out["volts"] = num
+        elif "batt" in kl:
+            out["battery_level"] = num
+
+    if not out and numeric_cols:
+        primary_val = numeric_cols[0][1]
+        st = (sensor_type or "thermohygrometer").lower()
+        if st in ("thermohygrometer", "thermometer"):
+            out["temperature"] = primary_val
+            if st == "thermohygrometer" and len(numeric_cols) > 1:
+                out["humidity"] = numeric_cols[1][1]
+        elif st == "hygrometer":
+            out["humidity"] = primary_val
+        elif st == "power_meter":
+            out["power_kw"] = primary_val
+        elif st == "ammeter":
+            out["amperes"] = primary_val
+        elif st == "voltmeter":
+            out["volts"] = primary_val
+    return out
+
+
+def _pick_latest_row(rows: List[Dict[str, Any]], raw_sql: str) -> Dict[str, Any]:
+    """Return the newest row whether SQL used ORDER BY ... DESC or ASC."""
+    if len(rows) <= 1:
+        return rows[0]
+    if re.search(r"\bORDER\s+BY\b[^;]*\bDESC\b", raw_sql, re.IGNORECASE):
+        return rows[0]
+    return rows[-1]
+
+
+def _extract_row_timestamp(row: Dict[str, Any]) -> Optional[str]:
+    """Extract ISO-like timestamp string from common SQL time columns."""
+    for k, v in row.items():
+        if str(k).strip().lower() in ("time", "date_time", "datetime", "timestamp", "recorded_at", "ts"):
+            if v is not None:
+                return v.isoformat() if hasattr(v, "isoformat") else str(v)
+    return None
+
+
+def _decrypt_source_config(source: DataSource) -> Dict[str, Any]:
+    cfg = copy.deepcopy(source.config or {})
+    for k in list(cfg.keys()):
+        if any(sens in k.lower() for sens in SENSITIVE_KEYS) and isinstance(cfg[k], str) and cfg[k]:
+            try:
+                cfg[k] = decrypt_secret(cfg[k])
+            except Exception:
+                pass
+    return cfg
+
+
+async def _sync_sensor_from_datasource(db: AsyncSession, sensor: Sensor) -> Dict[str, Any]:
+    """Execute a sensor's bound SQL query against its configured DataSource without duplicating readings."""
+    meta = dict(sensor.metadata_json or {})
+    ds_id = meta.get("data_source_id")
+    sql_query = (meta.get("sql_query") or "").strip()
+    sql_query_hum = (meta.get("sql_query_humidity") or "").strip()
+    if not ds_id or (not sql_query and not sql_query_hum):
+        return {"ok": False, "skipped": True, "reason": "No data_source_id or sql_query"}
+
+    source = (await db.execute(select(DataSource).where(DataSource.id == str(ds_id)))).scalar_one_or_none()
+    if not source:
+        return {"ok": False, "error": f"Data source '{ds_id}' not found"}
+
+    cfg = _decrypt_source_config(source)
+    metrics: Dict[str, float] = {}
+    total_rows = 0
+    exec_ms = 0.0
+
+    if sql_query:
+        try:
+            res = await _execute_sql_query(source.source_type, cfg, sql_query, hours_back=24, limit=500)
+        except HTTPException as exc:
+            return {"ok": False, "error": str(exc.detail)}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+        rows = res.get("rows") or []
+        total_rows = len(rows)
+        exec_ms = res.get("execution_ms") or 0.0
+        if rows:
+            latest = _pick_latest_row(rows, sql_query)
+            metrics.update(_extract_metrics_from_row(latest, sensor.sensor_type))
+
+    if sql_query_hum:
+        try:
+            res_h = await _execute_sql_query(source.source_type, cfg, sql_query_hum, hours_back=24, limit=500)
+            rows_h = res_h.get("rows") or []
+            if rows_h:
+                latest_h = _pick_latest_row(rows_h, sql_query_hum)
+                m_h = _extract_metrics_from_row(latest_h, "hygrometer")
+                if "humidity" in m_h:
+                    metrics["humidity"] = m_h["humidity"]
+        except Exception:
+            pass
+
+    if not metrics:
+        return {"ok": False, "error": "SQL query returned 0 usable rows", "row_count": total_rows}
+
+    if "temperature" in metrics:
+        sensor.current_temperature = round(metrics["temperature"], 2)
+    if "humidity" in metrics:
+        sensor.current_humidity = round(metrics["humidity"], 2)
+    if "power_kw" in metrics:
+        meta["power_kw"] = round(metrics["power_kw"], 2)
+    if "amperes" in metrics:
+        meta["amperes"] = round(metrics["amperes"], 2)
+    if "volts" in metrics:
+        meta["volts"] = round(metrics["volts"], 2)
+    if "battery_level" in metrics:
+        sensor.battery_level = round(metrics["battery_level"], 1)
+    sensor.metadata_json = meta
+    sensor.last_seen_at = datetime.now(timezone.utc)
+    sensor.status = "online"
+    await db.commit()
+    return {"ok": True, "row_count": total_rows, "metrics": metrics, "execution_ms": exec_ms}
+
+
 @router.post("/readings", status_code=status.HTTP_200_OK)
 async def push_sensor_reading(
     data: DirectReadingInput,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
-    """Directly record a sensor reading into the database and broadcast live via WebSocket."""
-    payload: Dict[str, Any] = {
-        "identifier": data.identifier,
-        "temperature": data.temperature,
-        "humidity": data.humidity,
-        "battery_level": data.battery_level,
-    }
-    if data.power_kw is not None:
-        payload["power_kw"] = data.power_kw
-    if data.wifi_dbm is not None:
-        payload["wifi_dbm"] = data.wifi_dbm
-    if data.area_id is not None:
-        payload["area_id"] = data.area_id
-
-    result = await process_telemetry_reading(db, payload)
-
-    # Also update metadata (sensor_type, area_id, floor_id, placement_x/z/y, power_kw, amperes, volts, wifi_dbm, data_source_id, sql_query, custom name)
+    """Directly update/record a sensor reading; skip local TelemetryReading storage when bound to external SQL."""
+    is_external_sql = bool(data.data_source_id) and bool((data.sql_query or "").strip() or (data.sql_query_humidity or "").strip())
     stmt = select(Sensor).where(Sensor.identifier == data.identifier)
     sensor = (await db.execute(stmt)).scalar_one_or_none()
+
+    if is_external_sql:
+        if not sensor:
+            sensor = Sensor(
+                identifier=data.identifier,
+                name=data.name or data.identifier,
+                sensor_type=data.sensor_type or "thermohygrometer",
+                current_temperature=data.temperature,
+                current_humidity=data.humidity,
+                battery_level=data.battery_level,
+                status="online",
+                metadata_json={},
+            )
+            db.add(sensor)
+            await db.flush()
+        result: Dict[str, Any] = {"status": "ok", "identifier": data.identifier}
+    else:
+        payload: Dict[str, Any] = {
+            "identifier": data.identifier,
+            "temperature": data.temperature,
+            "humidity": data.humidity,
+            "battery_level": data.battery_level,
+        }
+        if data.power_kw is not None:
+            payload["power_kw"] = data.power_kw
+        if data.wifi_dbm is not None:
+            payload["wifi_dbm"] = data.wifi_dbm
+        if data.area_id is not None:
+            payload["area_id"] = data.area_id
+        result = await process_telemetry_reading(db, payload)
+        sensor = (await db.execute(stmt)).scalar_one_or_none()
     if sensor:
         if data.name:
             sensor.name = data.name
@@ -278,11 +446,34 @@ async def push_sensor_reading(
         if data.wifi_dbm is not None:
             meta["wifi_dbm"] = round(float(data.wifi_dbm), 1)
         if data.data_source_id is not None:
-            meta["data_source_id"] = data.data_source_id
+            if data.data_source_id == "":
+                meta.pop("data_source_id", None)
+            else:
+                meta["data_source_id"] = data.data_source_id
         if data.sql_query is not None:
-            meta["sql_query"] = data.sql_query
+            if data.sql_query.strip() == "":
+                meta.pop("sql_query", None)
+            else:
+                meta["sql_query"] = data.sql_query
+        if data.sql_query_humidity is not None:
+            if data.sql_query_humidity.strip() == "":
+                meta.pop("sql_query_humidity", None)
+            else:
+                meta["sql_query_humidity"] = data.sql_query_humidity
+        if data.grafana_link_enabled is not None:
+            meta["grafana_link_enabled"] = bool(data.grafana_link_enabled)
+        if data.grafana_new_tab is not None:
+            meta["grafana_new_tab"] = bool(data.grafana_new_tab)
+        if data.grafana_url is not None:
+            meta["grafana_url"] = data.grafana_url.strip()
         sensor.metadata_json = meta
         await db.commit()
+
+        sql_sync = None
+        if meta.get("data_source_id") and (meta.get("sql_query") or meta.get("sql_query_humidity")):
+            sql_sync = await _sync_sensor_from_datasource(db, sensor)
+            await db.refresh(sensor)
+            meta = dict(sensor.metadata_json or {})
 
         # Force broadcast to all connected 3D views
         await notifier.broadcast_telemetry(
@@ -311,16 +502,34 @@ async def push_sensor_reading(
         **result,
         "name": sensor.name if sensor else data.name,
         "sensor_type": sensor.sensor_type if sensor else data.sensor_type,
-        "power_kw": data.power_kw,
-        "amperes": data.amperes,
-        "volts": data.volts,
+        "temperature": sensor.current_temperature if sensor else data.temperature,
+        "humidity": sensor.current_humidity if sensor else data.humidity,
+        "power_kw": (sensor.metadata_json or {}).get("power_kw") if sensor else data.power_kw,
+        "amperes": (sensor.metadata_json or {}).get("amperes") if sensor else data.amperes,
+        "volts": (sensor.metadata_json or {}).get("volts") if sensor else data.volts,
         "wifi_dbm": data.wifi_dbm,
         "area_id": data.area_id,
         "floor_id": data.floor_id,
         "placement_x": data.placement_x,
         "placement_z": data.placement_z,
         "placement_y": data.placement_y,
+        "sql_sync": sql_sync if sensor else None,
     }
+
+
+@router.post("/sync-sql")
+async def sync_all_sql_sensors(
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Execute SQL queries for all sensors bound to an external Data Source."""
+    sensors = (await db.execute(select(Sensor))).scalars().all()
+    results = {}
+    for s in sensors:
+        meta = s.metadata_json or {}
+        if meta.get("data_source_id") and (meta.get("sql_query") or meta.get("sql_query_humidity")):
+            results[s.identifier] = await _sync_sensor_from_datasource(db, s)
+    return {"synced": len(results), "results": results}
 
 
 @router.delete("/{identifier}")
@@ -456,6 +665,7 @@ async def save_3d_building(
 async def get_sensor_history(
     identifier: str,
     limit: int = 24,
+    hours: int = 24,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -466,6 +676,71 @@ async def get_sensor_history(
     sensor = (await db.execute(stmt)).scalar_one_or_none()
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor not found")
+
+    meta = sensor.metadata_json or {}
+    ds_id = meta.get("data_source_id")
+    sql_query = (meta.get("sql_query") or "").strip()
+    sql_query_hum = (meta.get("sql_query_humidity") or "").strip()
+
+    if ds_id and (sql_query or sql_query_hum):
+        source = (await db.execute(select(DataSource).where(DataSource.id == str(ds_id)))).scalar_one_or_none()
+        if source:
+            cfg = _decrypt_source_config(source)
+            readings_by_ts: Dict[str, Dict[str, Any]] = {}
+            ordered_readings: List[Dict[str, Any]] = []
+            max_rows = min(max(limit, 24), 500)
+
+            if sql_query:
+                hist_sql = re.sub(r"\s+LIMIT\s+1\s*;?\s*$", "", sql_query.strip(), flags=re.IGNORECASE)
+                try:
+                    res = await _execute_sql_query(source.source_type, cfg, hist_sql, hours_back=hours, limit=max_rows)
+                    raw_rows = res.get("rows") or []
+                    if re.search(r"\bORDER\s+BY\b[^;]*\bDESC\b", hist_sql, re.IGNORECASE):
+                        raw_rows = list(reversed(raw_rows))
+                    for r in raw_rows:
+                        ts = _extract_row_timestamp(r)
+                        m = _extract_metrics_from_row(r, sensor.sensor_type)
+                        entry = {
+                            "timestamp": ts,
+                            "temperature": m.get("temperature"),
+                            "humidity": m.get("humidity"),
+                            "raw_data": {k: v for k, v in m.items() if k not in ("temperature", "humidity")},
+                        }
+                        ordered_readings.append(entry)
+                        if ts:
+                            readings_by_ts[ts] = entry
+                except Exception:
+                    pass
+
+            if sql_query_hum:
+                hist_sql_h = re.sub(r"\s+LIMIT\s+1\s*;?\s*$", "", sql_query_hum.strip(), flags=re.IGNORECASE)
+                try:
+                    res_h = await _execute_sql_query(source.source_type, cfg, hist_sql_h, hours_back=hours, limit=max_rows)
+                    raw_rows_h = res_h.get("rows") or []
+                    if re.search(r"\bORDER\s+BY\b[^;]*\bDESC\b", hist_sql_h, re.IGNORECASE):
+                        raw_rows_h = list(reversed(raw_rows_h))
+                    for idx_h, r in enumerate(raw_rows_h):
+                        ts = _extract_row_timestamp(r)
+                        m_h = _extract_metrics_from_row(r, "hygrometer")
+                        hum_val = m_h.get("humidity")
+                        if ts and ts in readings_by_ts:
+                            readings_by_ts[ts]["humidity"] = hum_val
+                        elif idx_h < len(ordered_readings):
+                            ordered_readings[idx_h]["humidity"] = hum_val
+                        else:
+                            ordered_readings.append({"timestamp": ts, "temperature": None, "humidity": hum_val, "raw_data": {}})
+                except Exception:
+                    pass
+
+            if ordered_readings:
+                return {
+                    "sensor_id": sensor.id,
+                    "identifier": sensor.identifier,
+                    "name": sensor.name,
+                    "status": sensor.status,
+                    "source": "external_sql",
+                    "readings": ordered_readings[-max_rows:],
+                }
 
     q = (
         select(TelemetryReading)
@@ -481,6 +756,7 @@ async def get_sensor_history(
         "identifier": sensor.identifier,
         "name": sensor.name,
         "status": sensor.status,
+        "source": "local_db",
         "readings": [
             {
                 "timestamp": r.timestamp.isoformat() if r.timestamp else None,

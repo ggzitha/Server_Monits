@@ -165,28 +165,44 @@ export async function createNextFloorHass(options = {}) {
     const validT = dbReadings.map(r => r.temperature).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
     const validH = dbReadings.map(r => r.humidity).filter(v => v !== null && v !== undefined && Number.isFinite(Number(v))).map(Number);
 
-    // Build 24 points representing 24 hours up to the current live reading
+    // Build 24 points for the 24h chart from real DB readings when available
     const tempPts = [];
     const humPts = [];
-    const seed = (s?.identifier || "sensor").split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    const chartPoints = [];
+    const hasRealT = validT.length > 0;
+    const hasRealH = validH.length > 0;
+    const nowMs = Date.now();
+    const fmtTime = (ms) => {
+      const d = new Date(ms);
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    };
+    const fmtFull = (ms) => {
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${fmtTime(ms)}:${String(d.getSeconds()).padStart(2, "0")}`;
+    };
 
     for (let i = 0; i < 24; i++) {
-      if (i === 23) {
-        tempPts.push(baseT);
-        humPts.push(baseH);
-      } else if (validT.length >= 6 && i >= 24 - validT.length) {
-        const idx = i - (24 - validT.length);
-        tempPts.push(validT[idx] ?? baseT);
-        humPts.push(validH[idx] ?? baseH);
-      } else {
-        // Smooth diurnal + cooling cycle wave anchored to DB baseline
-        const phase = ((i + (seed % 7)) / 24) * Math.PI * 2;
-        const ripple = Math.sin(i * 1.4 + seed) * 0.45;
-        const tWave = Math.sin(phase - 1.1) * 1.35 + ripple;
-        const hWave = -Math.sin(phase - 1.1) * 2.4 + Math.cos(i * 1.1) * 0.8;
-        tempPts.push(Math.round((baseT + tWave) * 100) / 100);
-        humPts.push(Math.round((baseH + hWave) * 100) / 100);
+      let tVal = baseT;
+      let hVal = baseH;
+      let tsMs = nowMs - (23 - i) * 3600000;
+      if (dbReadings.length > 0) {
+        const rIdx = dbReadings.length === 1 ? 0 : Math.min(dbReadings.length - 1, Math.round((i / 23) * (dbReadings.length - 1)));
+        const rObj = dbReadings[rIdx];
+        if (rObj?.timestamp) {
+          const parsed = Date.parse(String(rObj.timestamp).replace(" ", "T"));
+          if (Number.isFinite(parsed)) tsMs = parsed;
+        }
+        if (hasRealT) tVal = rObj?.temperature !== null && rObj?.temperature !== undefined ? Number(rObj.temperature) : validT[Math.min(validT.length - 1, rIdx)] ?? baseT;
+        if (hasRealH) hVal = rObj?.humidity !== null && rObj?.humidity !== undefined ? Number(rObj.humidity) : validH[Math.min(validH.length - 1, rIdx)] ?? baseH;
       }
+      tempPts.push(tVal);
+      humPts.push(hVal);
+      chartPoints.push({
+        timeLabel: fmtTime(tsMs),
+        fullTime: fmtFull(tsMs),
+        temp: Math.round(tVal * 100) / 100,
+        hum: Math.round(hVal * 100) / 100
+      });
     }
 
     const minTemp = Math.min(...tempPts);
@@ -196,13 +212,15 @@ export async function createNextFloorHass(options = {}) {
     const maxHum = Math.max(...humPts);
     const avgHum = humPts.reduce((a, b) => a + b, 0) / humPts.length;
 
-    // Normalized visual curves (0..100 scale) so the 24h SVG area & line chart always shows clear dynamics
-    const tSpan = Math.max(1.2, maxTemp - minTemp);
-    const hSpan = Math.max(3.0, maxHum - minHum);
+    // Normalized visual curves (0..100 scale) anchored to real min/max
+    const tSpan = Math.max(0.5, maxTemp - minTemp);
+    const hSpan = Math.max(1.0, maxHum - minHum);
     const visualTemp = tempPts.map(v => Math.round((22 + ((v - minTemp) / tSpan) * 66) * 10) / 10);
     const visualHum = humPts.map(v => Math.round((18 + ((v - minHum) / hSpan) * 62) * 10) / 10);
 
     return {
+      rawReadings: dbReadings,
+      chartPoints,
       tempPts,
       humPts,
       minTemp,
@@ -218,9 +236,9 @@ export async function createNextFloorHass(options = {}) {
     };
   }
 
-  async function fetchSensorHistory(identifier) {
+  async function fetchSensorHistory(identifier, hours = 24) {
     try {
-      const res = await fetch(`/api/v1/sensors/${encodeURIComponent(identifier)}/history?limit=24`);
+      const res = await fetch(`/api/v1/sensors/${encodeURIComponent(identifier)}/history?limit=200&hours=${hours}`);
       if (res.ok) {
         const data = await res.json();
         const s = dbSensorsCache.find(item => item.identifier === identifier) || {
@@ -555,11 +573,56 @@ export async function createNextFloorHass(options = {}) {
       avgHum: hist.avgHum,
       tempPts: hist.tempPts,
       humPts: hist.humPts,
+      chartPoints: hist.chartPoints,
       curves: hist.curves,
+      grafanaLinkEnabled: Boolean(s.grafana_link_enabled),
+      grafanaNewTab: s.grafana_new_tab !== false,
+      grafanaUrl: s.grafana_url || "",
       expanded: s.identifier === expandedSensorIdentifier,
       indexLabel: `${index + 1}/${total}`
     };
   }
+
+  function computeSunPosition(ms, lat, lon) {
+    const rad = Math.PI / 180;
+    const n = ms / 864e5 + 2440587.5 - 2451545;
+    const L = ((280.46646 + n * (36000.76983 + n * 3.032e-4)) % 360 + 360) % 360;
+    const M = 357.52911 + n * (35999.05029 - 1.537e-4 * n);
+    const e = 0.016708634 - n * (4.2037e-8 + 1.267e-10 * n);
+    const C = Math.sin(M * rad) * (1.914602 - n * (0.004817 + 1.4e-5 * n)) + Math.sin(2 * M * rad) * (0.019993 - 1.01e-4 * n) + Math.sin(3 * M * rad) * 2.89e-4;
+    const omega = 125.04 - 1934.136 * n;
+    const lambda = L + C - 0.00569 - 0.00478 * Math.sin(omega * rad);
+    const eps = 23 + (26 + (21.448 - n * (46.815 + n * (5.9e-4 - n * 0.001813))) / 60) / 60 + 0.00256 * Math.cos(omega * rad);
+    const dec = Math.asin(Math.sin(eps * rad) * Math.sin(lambda * rad));
+    const y = Math.tan((eps / 2) * rad) ** 2;
+    const eqTime = 4 * (y * Math.sin(2 * L * rad) - 2 * e * Math.sin(M * rad) + 4 * e * y * Math.sin(M * rad) * Math.cos(2 * L * rad) - 0.5 * y * y * Math.sin(4 * L * rad) - 1.25 * e * e * Math.sin(2 * M * rad)) / rad;
+    const d = new Date(ms);
+    const ha = (((d.getUTCHours() * 60 + d.getUTCMinutes() + d.getUTCSeconds() / 60 + eqTime + 4 * lon) % 1440 + 1440) % 1440 / 4 - 180) * rad;
+    const latR = lat * rad;
+    const cosZ = Math.sin(latR) * Math.sin(dec) + Math.cos(latR) * Math.cos(dec) * Math.cos(ha);
+    const elevation = 90 - Math.acos(Math.min(1, Math.max(-1, cosZ))) / rad;
+    const azimuth = (Math.atan2(Math.sin(ha), Math.cos(ha) * Math.sin(latR) - Math.tan(dec) * Math.cos(latR)) / rad + 180 + 360) % 360;
+    return { azimuth: Math.round(azimuth * 100) / 100, elevation: Math.round(elevation * 100) / 100 };
+  }
+
+  function updateLiveSunEntity() {
+    const pos = computeSunPosition(Date.now(), -6.2, 106.8);
+    statesMap["sun.sun"] = {
+      entity_id: "sun.sun",
+      state: pos.elevation > -0.833 ? "above_horizon" : "below_horizon",
+      attributes: {
+        azimuth: pos.azimuth,
+        elevation: pos.elevation,
+        friendly_name: "Sun"
+      },
+      last_changed: new Date().toISOString()
+    };
+  }
+  updateLiveSunEntity();
+  setInterval(() => {
+    updateLiveSunEntity();
+    pushHassToPanel();
+  }, 60000);
 
   const hass = {
     language: activeLang,
@@ -782,7 +845,89 @@ export async function createNextFloorHass(options = {}) {
         return { enabled: false };
       }
 
-      // 8. 24-Hour Sensor History & Statistics from Database
+      // 8b. NeonPlan 3D Time Travel History (real SQL/DB readings + sun.sun solar trajectory)
+      if (type === "neonplan3d/timetravel/history") {
+        const startSec = Number(msg.start_time ?? (Date.now() / 1000 - 86400));
+        const endSec = Number(msg.end_time ?? (Date.now() / 1000));
+        const reqIds = msg.entity_ids || [];
+        const entitiesOut = {};
+
+        for (const eid of reqIds) {
+          if (eid === "sun.sun") {
+            const tArr = [];
+            const vArr = [];
+            const tabArr = [];
+            const step = 900; // 15-min steps
+            for (let ts = startSec; ts <= endSec; ts += step) {
+              const pos = computeSunPosition(ts * 1000, -6.2, 106.8);
+              const stVal = pos.elevation > -0.833 ? "above_horizon" : "below_horizon";
+              tArr.push(Math.round(ts - startSec));
+              vArr.push(tabArr.length);
+              tabArr.push({ s: stVal, a: { azimuth: pos.azimuth, elevation: pos.elevation, friendly_name: "Sun" } });
+            }
+            entitiesOut["sun.sun"] = { t: tArr, v: vArr, tab: tabArr };
+            continue;
+          }
+
+          const st = statesMap[eid];
+          if (!eid.startsWith("sensor.")) {
+            if (st) {
+              entitiesOut[eid] = { t: [0], v: [0], tab: [{ s: String(st.state), a: st.attributes || {} }] };
+            }
+            continue;
+          }
+
+          const ident = st?.attributes?.db_identifier || eid.replace(/^sensor\./, "").replace(/_(temp|humidity|power|ampere|volt)$/, "");
+          const s = dbSensorsCache.find(item => item.identifier === ident);
+          const series = sensorHistoryCache[ident] || await fetchSensorHistory(ident) || (s ? build24hSeriesForSensor(s, []) : null);
+          if (series) {
+            const isHum = eid.endsWith("_humidity");
+            const isPower = eid.endsWith("_power");
+            const isAmp = eid.endsWith("_ampere");
+            const isVolt = eid.endsWith("_volt");
+            const raw = Array.isArray(series.rawReadings) ? series.rawReadings : [];
+            const tArr = [];
+            const vArr = [];
+            const tabArr = [];
+            const attrs = st?.attributes || {};
+
+            if (raw.length > 0) {
+              raw.forEach((r, idx) => {
+                const val = isHum ? r.humidity : isPower ? r.raw_data?.power_kw : isAmp ? r.raw_data?.amperes : isVolt ? r.raw_data?.volts : r.temperature;
+                if (val === null || val === undefined) return;
+                const parsedMs = r.timestamp ? Date.parse(String(r.timestamp).replace(" ", "T")) : NaN;
+                const tsSec = Number.isFinite(parsedMs) ? (parsedMs / 1000) : (startSec + ((endSec - startSec) * idx) / Math.max(1, raw.length - 1));
+                const off = Math.max(0, Math.round(tsSec - startSec));
+                tArr.push(off);
+                vArr.push(tabArr.length);
+                tabArr.push({ s: String(val), a: attrs });
+              });
+            }
+            if (tArr.length === 0) {
+              const pts = isHum ? series.humPts : series.tempPts;
+              pts.forEach((val, idx) => {
+                const off = Math.round(((endSec - startSec) * idx) / Math.max(1, pts.length - 1));
+                tArr.push(off);
+                vArr.push(tabArr.length);
+                tabArr.push({ s: String(val), a: attrs });
+              });
+            }
+            entitiesOut[eid] = { t: tArr, v: vArr, tab: tabArr };
+          }
+        }
+
+        return {
+          day_start: startSec,
+          end: endSec,
+          oldest: startSec,
+          keep_days: 30,
+          entities: entitiesOut,
+          stats: {},
+          missing: []
+        };
+      }
+
+      // 8. 24-Hour Sensor History & Statistics from Database (used by 24h Chart & Time Travel)
       if (type === "history/history_during_period") {
         const reqIds = msg.entity_ids || [];
         const startMs = msg.start_time ? Date.parse(msg.start_time) : Date.now() - 86400000;
@@ -791,11 +936,31 @@ export async function createNextFloorHass(options = {}) {
 
         for (const eid of reqIds) {
           const st = statesMap[eid];
-          const ident = st?.attributes?.db_identifier || eid.replace(/^sensor\./, "").replace(/_(temp|humidity|power)$/, "");
+          const ident = st?.attributes?.db_identifier || eid.replace(/^sensor\./, "").replace(/_(temp|humidity|power|ampere|volt)$/, "");
           const s = dbSensorsCache.find(item => item.identifier === ident);
-          const series = sensorHistoryCache[ident] || (s ? build24hSeriesForSensor(s, []) : null);
+          const series = sensorHistoryCache[ident] || await fetchSensorHistory(ident) || (s ? build24hSeriesForSensor(s, []) : null);
           if (series) {
             const isHum = eid.endsWith("_humidity");
+            const isPower = eid.endsWith("_power");
+            const isAmp = eid.endsWith("_ampere");
+            const isVolt = eid.endsWith("_volt");
+            const raw = Array.isArray(series.rawReadings) ? series.rawReadings : [];
+            if (raw.length > 0) {
+              const mapped = [];
+              raw.forEach((r, idx) => {
+                const val = isHum ? r.humidity : isPower ? r.raw_data?.power_kw : isAmp ? r.raw_data?.amperes : isVolt ? r.raw_data?.volts : r.temperature;
+                if (val === null || val === undefined) return;
+                const parsedTs = r.timestamp ? Date.parse(String(r.timestamp).replace(" ", "T")) : NaN;
+                const lu = Number.isFinite(parsedTs)
+                  ? parsedTs / 1000
+                  : (startMs + ((endMs - startMs) * idx) / Math.max(1, raw.length - 1)) / 1000;
+                mapped.push({ lu, s: String(val), a: st?.attributes || {} });
+              });
+              if (mapped.length > 0) {
+                out[eid] = mapped;
+                continue;
+              }
+            }
             const pts = isHum ? series.humPts : series.tempPts;
             out[eid] = pts.map((val, idx) => ({
               lu: (startMs + ((endMs - startMs) * idx) / Math.max(1, pts.length - 1)) / 1000,
@@ -1220,7 +1385,26 @@ export async function createNextFloorHass(options = {}) {
       }
       return dbSensorsCache;
     },
-    async pushDbSensorReading({ identifier, name, sensor_type, area_id, floor_id, placement_x, placement_z, placement_y, temperature, humidity, power_kw, amperes, volts, data_source_id, sql_query }) {
+    _lastSqlSync: null,
+    getLastSqlSync() {
+      return this._lastSqlSync;
+    },
+    async syncSqlSensors() {
+      try {
+        const res = await fetch("/api/v1/sensors/sync-sql", {
+          method: "POST",
+          headers: { "X-CSRF-Token": getCsrfToken() }
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          await this.refreshSensorsFromDb();
+          pushHassToPanel();
+          return data;
+        }
+      } catch (e) {}
+      return null;
+    },
+    async pushDbSensorReading({ identifier, name, sensor_type, area_id, floor_id, placement_x, placement_z, placement_y, temperature, humidity, power_kw, amperes, volts, data_source_id, sql_query, sql_query_humidity, grafana_link_enabled, grafana_new_tab, grafana_url }) {
       const res = await fetch("/api/v1/sensors/readings", {
         method: "POST",
         headers: {
@@ -1236,8 +1420,12 @@ export async function createNextFloorHass(options = {}) {
           ...(placement_x !== undefined && placement_x !== null && placement_x !== "" ? { placement_x: Number(placement_x) } : {}),
           ...(placement_z !== undefined && placement_z !== null && placement_z !== "" ? { placement_z: Number(placement_z) } : {}),
           ...(placement_y !== undefined && placement_y !== null && placement_y !== "" ? { placement_y: Number(placement_y) } : {}),
-          ...(data_source_id !== undefined && data_source_id !== null && data_source_id !== "" ? { data_source_id: Number(data_source_id) } : {}),
-          ...(sql_query !== undefined && sql_query !== null && sql_query !== "" ? { sql_query } : {}),
+          ...(data_source_id !== undefined && data_source_id !== null ? { data_source_id: String(data_source_id) } : {}),
+          ...(sql_query !== undefined && sql_query !== null ? { sql_query: String(sql_query) } : {}),
+          ...(sql_query_humidity !== undefined && sql_query_humidity !== null ? { sql_query_humidity: String(sql_query_humidity) } : {}),
+          ...(grafana_link_enabled !== undefined ? { grafana_link_enabled: Boolean(grafana_link_enabled) } : {}),
+          ...(grafana_new_tab !== undefined ? { grafana_new_tab: Boolean(grafana_new_tab) } : {}),
+          ...(grafana_url !== undefined && grafana_url !== null ? { grafana_url: String(grafana_url) } : {}),
           temperature: temperature !== "" && temperature !== null && temperature !== undefined ? Number(temperature) : null,
           humidity: humidity !== "" && humidity !== null && humidity !== undefined ? Number(humidity) : null,
           power_kw: power_kw !== "" && power_kw !== null && power_kw !== undefined ? Number(power_kw) : null,
@@ -1246,14 +1434,18 @@ export async function createNextFloorHass(options = {}) {
         })
       });
       if (res.ok) {
+        const json = await res.json().catch(() => null);
+        this._lastSqlSync = json?.sql_sync || null;
         activeSensorIdentifier = identifier;
         await this.refreshSensorsFromDb();
         void fetchSensorHistory(identifier).then(() => pushHassToPanel());
         pushHassToPanel();
+      } else {
+        this._lastSqlSync = null;
       }
       return res.ok;
     },
-    async addAndPlaceSensorIn3D({ name, identifier, sensorType, floorId, areaId, x, z, mountY, temperature, humidity, powerKw, amperes, volts, dataSourceId, sqlQuery }) {
+    async addAndPlaceSensorIn3D({ name, identifier, sensorType, floorId, areaId, x, z, mountY, temperature, humidity, powerKw, amperes, volts, dataSourceId, sqlQuery, sqlQueryHumidity, grafanaLinkEnabled, grafanaNewTab, grafanaUrl }) {
       const cleanName = (name || "Rack Env Sensor").trim();
       const sType = (sensorType || "thermohygrometer").trim().toLowerCase();
       const cleanIdent = (identifier || cleanName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `sensor_${Date.now().toString(36)}`).slice(0, 60);
@@ -1275,6 +1467,10 @@ export async function createNextFloorHass(options = {}) {
         placement_y: py,
         data_source_id: dataSourceId || null,
         sql_query: sqlQuery || null,
+        sql_query_humidity: sqlQueryHumidity || null,
+        grafana_link_enabled: Boolean(grafanaLinkEnabled),
+        grafana_new_tab: grafanaNewTab !== false,
+        grafana_url: grafanaUrl || "",
         temperature: (sType === "thermohygrometer" || sType === "thermometer") ? (temperature ?? 21.5) : null,
         humidity: (sType === "thermohygrometer" || sType === "hygrometer") ? (humidity ?? 45.0) : null,
         power_kw: sType === "power_meter" ? (powerKw !== "" && powerKw !== undefined ? powerKw : 1.5) : null,
