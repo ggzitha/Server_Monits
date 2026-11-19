@@ -14,7 +14,7 @@ import os
 import sys
 
 os.environ["APP_ENV"] = "development"
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///server_monits_dev.db"
+os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///server_monits_smoke_test.db"
 
 import time
 import subprocess
@@ -47,13 +47,12 @@ def seed_admin_for_smoke_test():
 
         session_factory = get_session_factory()
         async with session_factory() as db:
-            cfg_res = await db.execute(select(SystemConfig).limit(1))
+            cfg_res = await db.execute(select(SystemConfig).where(SystemConfig.key == "is_initialized"))
             cfg = cfg_res.scalar_one_or_none()
             if not cfg:
-                cfg = SystemConfig(is_initialized=True, app_name="Server_Monits")
-                db.add(cfg)
+                db.add(SystemConfig(key="is_initialized", value="true"))
             else:
-                cfg.is_initialized = True
+                cfg.value = "true"
 
             r_res = await db.execute(select(Role).where(Role.name == "Admin"))
             admin_role = r_res.scalar_one_or_none()
@@ -113,7 +112,7 @@ def run_smoke_test():
         print(f">> Launching local uvicorn development server on port {DEV_PORT}...")
         env = os.environ.copy()
         env["APP_ENV"] = "development"
-        env["DATABASE_URL"] = "sqlite+aiosqlite:///server_monits_dev.db"
+        env["DATABASE_URL"] = "sqlite+aiosqlite:///server_monits_smoke_test.db"
         server_process = subprocess.Popen(
             [sys.executable, "-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", str(DEV_PORT)],
             cwd=str(ROOT_DIR),
@@ -255,6 +254,59 @@ def run_smoke_test():
             if not live_card_check.get("found") or live_card_check.get("visibility") != "visible" or live_card_check.get("rings") != 2 or not live_card_check.get("hasSolarPath") or live_card_check.get("visibleSensorPins", 0) < 4:
                 raise RuntimeError(f"Expected 3D-anchored visible .live-card-env with 2 circular gauges and 24h chart, got: {live_card_check}")
             print(f"  ✓ 3D-Anchored Sensor Hologram (.live-card-env @ {live_card_check['transform']}) and {live_card_check['visibleSensorPins']} 3D sensor pins verified with Temp/Humidity Gauges & 24h Chart!")
+
+            # Verify switching sensors via ▶ button works even when inside a room
+            before_ident = page.evaluate("() => window.monitsApi.getActiveSensorIdentifier()")
+            page.evaluate("""() => {
+                const v3d = document.querySelector('nextfloor-panel')?.shadowRoot?.querySelector('nf-view3d');
+                const nextBtn = v3d?.shadowRoot?.querySelector('.live-card-env button[title="Next Sensor"]');
+                if (nextBtn) nextBtn.click();
+            }""")
+            page.wait_for_timeout(300)
+            after_ident = page.evaluate("() => window.monitsApi.getActiveSensorIdentifier()")
+            if before_ident == after_ident:
+                raise RuntimeError(f"Expected active sensor to switch when clicking Next Sensor button, stayed on '{before_ident}'")
+            print(f"  ✓ Sensor switching via ▶ button works cleanly: '{before_ident}' -> '{after_ident}'")
+
+            # Verify Markers='none' hides .live-card-env and Markers='important' restores it
+            page.evaluate("() => { const p = document.querySelector('nextfloor-panel'); p.setPref('markers', 'none'); }")
+            page.wait_for_timeout(300)
+            hidden_count = page.evaluate("() => document.querySelector('nextfloor-panel').shadowRoot.querySelector('nf-view3d').shadowRoot.querySelectorAll('.live-card').length")
+            if hidden_count != 0:
+                raise RuntimeError(f"Expected 0 .live-card elements when markers='none', got {hidden_count}")
+            page.evaluate("() => { const p = document.querySelector('nextfloor-panel'); p.setPref('markers', 'important'); }")
+            page.wait_for_timeout(300)
+            restored_count = page.evaluate("() => document.querySelector('nextfloor-panel').shadowRoot.querySelector('nf-view3d').shadowRoot.querySelectorAll('.live-card-env').length")
+            if restored_count < 1:
+                raise RuntimeError(f"Expected .live-card-env to reappear when markers='important', got {restored_count}")
+            print("  ✓ Markers='none' hides 3D hologram pop-up, and Markers='important' restores it.")
+
+            # Verify Spatial IDW Heatmaps (temperature, humidity, wifi) render multi-color floor gradient meshes
+            for hm in ["temperature", "humidity", "wifi"]:
+                hm_res = page.evaluate(f"""() => {{
+                    const v3d = document.querySelector('nextfloor-panel').shadowRoot.querySelector('nf-view3d');
+                    v3d.heatMode = '{hm}';
+                    v3d.requestUpdate();
+                    v3d.applyTint();
+                    const fl = v3d.viewer?.floors?.[0];
+                    const mesh = fl?.heatOverlayMesh;
+                    const canvas = mesh?.material?.map?.image;
+                    let uniqueColors = 0;
+                    if (canvas) {{
+                        const ctx = canvas.getContext('2d');
+                        const d = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+                        const s = new Set();
+                        for (let i = 0; i < d.length; i += 16) {{
+                            if (d[i + 3] > 0) s.add((d[i] >> 4) + ',' + (d[i+1] >> 4) + ',' + (d[i+2] >> 4));
+                        }}
+                        uniqueColors = s.size;
+                    }}
+                    return {{ visible: !!mesh?.visible, uniqueColors }};
+                }}""")
+                if not hm_res.get("visible") or hm_res.get("uniqueColors", 0) < 3:
+                    raise RuntimeError(f"Expected multi-color spatial heatmap for '{hm}', got: {hm_res}")
+                print(f"  ✓ Spatial wall-aware heatmap '{hm}' active ({hm_res['uniqueColors']} gradient color buckets).")
+            page.evaluate("() => { const v3d = document.querySelector('nextfloor-panel').shadowRoot.querySelector('nf-view3d'); v3d.heatMode = 'none'; v3d.applyTint(); }")
 
             # Toggle virtual light off then on
             page.evaluate("() => window.onVirtualLightToggle('light.server_alpha_light', 'off')")

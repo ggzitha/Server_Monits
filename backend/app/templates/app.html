@@ -359,7 +359,7 @@
 </aside>
 
 <script type="module">
-  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261116d";
+  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261119a";
 
   const currentLang = "{{ current_lang|default('en') }}";
   const isId = currentLang === "id";
@@ -749,7 +749,7 @@
 
   async function init() {
     try {
-      await import("/static/nextfloor/nextfloor.js?v=20261116d");
+      await import("/static/nextfloor/nextfloor.js?v=20261119a");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {

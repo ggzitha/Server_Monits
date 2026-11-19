@@ -198,6 +198,38 @@ export const DEMO_PACK = {
         { shape: "box", x: 0, z: 0.48, w: 0.65, d: 0.1, y: 0.25, h: 0.5, color: "#22c55e", glow: true }
       ],
       symbol: [{ shape: "rect", x: 0, z: 0, w: 1, d: 1, fill: true }]
+    },
+    {
+      id: "pc_workstation",
+      name: { en: "Hardening PC Workstation", id: "Komputer Workstation Hardening" },
+      size: [0.65, 0.45, 0.45],
+      mount: "surface",
+      electric: true,
+      parts: [
+        { shape: "box", x: -0.1, z: 0, w: 0.7, d: 0.1, y: 0.22, h: 0.72, color: "#0f172a", edges: "glow" },
+        { shape: "box", x: -0.1, z: 0.06, w: 0.64, d: 0.03, y: 0.25, h: 0.64, color: "#38bdf8", glow: true },
+        { shape: "box", x: 0.34, z: 0, w: 0.26, d: 0.75, y: 0, h: 0.85, color: "#1e293b", edges: "glow" },
+        { shape: "box", x: -0.1, z: 0.32, w: 0.52, d: 0.28, y: 0, h: 0.08, color: "#334155" }
+      ],
+      symbol: [{ shape: "rect", x: 0, z: 0, w: 1, d: 1, fill: true }]
+    },
+    {
+      id: "ac_outdoor_unit",
+      name: { en: "AC Outdoor Condenser Unit", id: "Unit Outdoor AC" },
+      size: [0.9, 0.36, 0.75],
+      mount: "floor",
+      electric: true,
+      climate: true,
+      parts: [
+        { shape: "box", x: 0, z: 0, w: 1, d: 1, y: 0, h: 1, color: "#334155", edges: "glow" },
+        { shape: "box", x: -0.15, z: 0.48, w: 0.56, d: 0.08, y: 0.12, h: 0.76, color: "#0f172a", edges: true },
+        { shape: "box", x: -0.15, z: 0.50, w: 0.38, d: 0.04, y: 0.26, h: 0.48, color: "#38bdf8", glow: true },
+        { shape: "box", x: 0.28, z: 0.48, w: 0.22, d: 0.06, y: 0.65, h: 0.2, color: "#22c55e", glow: true }
+      ],
+      symbol: [
+        { shape: "rect", x: 0, z: 0, w: 1, d: 1, fill: true },
+        { shape: "circle", x: -0.15, z: 0, r: 0.28 }
+      ]
     }
   ]
 };

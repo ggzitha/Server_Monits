@@ -824,14 +824,22 @@ export async function createNextFloorHass(options = {}) {
       if (!dbSensorsCache.length) return [];
       const targetB = b || window.nfPanel?.data?.building || building;
 
-      // If a specific room is selected, show that room's sensor card
+      // If a specific room is selected, keep activeSensorIdentifier if it belongs to that room; otherwise pick first sensor in that room
       if (roomId) {
         for (const fl of targetB?.floors || []) {
           const rm = (fl.rooms || []).find(r => r.id === roomId);
           if (rm) {
             const roomArea = rm.ha_area || rm.id;
+            const activeInRoomIdx = dbSensorsCache.findIndex(
+              s => s.identifier === activeSensorIdentifier && s.area_id === roomArea
+            );
+            if (activeInRoomIdx >= 0) {
+              const card = buildCardDescriptorForSensor(dbSensorsCache[activeInRoomIdx], targetB, activeInRoomIdx, dbSensorsCache.length);
+              return card ? [card] : [];
+            }
             const roomIdx = dbSensorsCache.findIndex(s => s.area_id === roomArea);
             if (roomIdx >= 0) {
+              activeSensorIdentifier = dbSensorsCache[roomIdx].identifier;
               const card = buildCardDescriptorForSensor(dbSensorsCache[roomIdx], targetB, roomIdx, dbSensorsCache.length);
               return card ? [card] : [];
             }
@@ -857,6 +865,255 @@ export async function createNextFloorHass(options = {}) {
 
       const card = buildCardDescriptorForSensor(chosen, targetB, idx, dbSensorsCache.length);
       return card ? [card] : [];
+    },
+    buildFloorHeatmapCanvas(floor, heatMode, hassObj = null) {
+      if (!floor || !Array.isArray(floor.rooms) || !floor.rooms.length) return null;
+      const hStates = (hassObj && hassObj.states) || statesMap;
+
+      // 1. Collect spatial sources on this floor
+      const sources = [];
+      if (heatMode === "temperature" || heatMode === "humidity") {
+        const seen = new Set();
+        for (const p of floor.placements || []) {
+          const eid = p.entity_id || "";
+          const st = hStates[eid];
+          if (!st) continue;
+          const dc = st.attributes?.device_class;
+          const isTemp = heatMode === "temperature" && (dc === "temperature" || eid.endsWith("_temp"));
+          const isHum = heatMode === "humidity" && (dc === "humidity" || eid.endsWith("_humidity"));
+          if (!isTemp && !isHum) continue;
+          const val = Number(st.state);
+          if (Number.isFinite(val)) {
+            sources.push({ x: Number(p.x), z: Number(p.z), value: val });
+            seen.add(eid);
+          }
+        }
+        // Fallback: include any DB sensors with coordinates on this floor not yet in placements
+        for (const s of dbSensorsCache) {
+          if (s.floor_id && s.floor_id !== floor.id) continue;
+          if (s.placement_x == null || s.placement_z == null) continue;
+          const eid = heatMode === "temperature" ? `sensor.${s.identifier}_temp` : `sensor.${s.identifier}_humidity`;
+          if (seen.has(eid)) continue;
+          const val = heatMode === "temperature" ? Number(s.current_temperature) : Number(s.current_humidity);
+          if (Number.isFinite(val)) {
+            sources.push({ x: Number(s.placement_x), z: Number(s.placement_z), value: val });
+          }
+        }
+      } else if (heatMode === "wifi") {
+        // Look for placed WiFi APs in furniture
+        for (const f of floor.furniture || []) {
+          const t = String(f.type || "").toLowerCase();
+          if (t.includes("wifi") || t.includes("router") || t.endsWith(":ap")) {
+            sources.push({ x: Number(f.x), z: Number(f.z), txPower: -28 });
+          }
+        }
+        // If no dedicated WiFi AP furniture is placed yet, place a default AP in the first room (or Hardening/NOC room)
+        if (!sources.length && floor.rooms.length) {
+          const apRoom = floor.rooms.find(r => (r.name || "").toLowerCase().includes("hardening") || (r.name || "").toLowerCase().includes("noc")) || floor.rooms[0];
+          const pts = apRoom.points || apRoom.poly || [];
+          if (pts.length) {
+            let sx = 0, sz = 0;
+            for (const pt of pts) { sx += Number(pt[0]); sz += Number(pt[1]); }
+            sources.push({ x: sx / pts.length, z: sz / pts.length, txPower: -30 });
+          }
+        }
+      }
+
+      if (!sources.length) return null;
+
+      // 2. Compute floor bounding box
+      let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+      const roomPolys = [];
+      for (const rm of floor.rooms) {
+        const pts = rm.points || rm.poly || [];
+        if (pts.length < 3) continue;
+        roomPolys.push(pts);
+        for (const [px, pz] of pts) {
+          if (px < x0) x0 = px;
+          if (px > x1) x1 = px;
+          if (pz < z0) z0 = pz;
+          if (pz > z1) z1 = pz;
+        }
+      }
+      if (!Number.isFinite(x0) || x1 <= x0 || z1 <= z0) return null;
+
+      // 3. Extract wall segments & door openings (deduplicating shared walls)
+      const wallSegs = [];
+      const wallKeyMap = new Map();
+      const roundKey = (ax, az, bx, bz) => {
+        const a = `${ax.toFixed(2)},${az.toFixed(2)}`;
+        const b = `${bx.toFixed(2)},${bz.toFixed(2)}`;
+        return a < b ? `${a}|${b}` : `${b}|${a}`;
+      };
+
+      for (const rm of floor.rooms) {
+        const pts = rm.points || rm.poly || [];
+        for (let i = 0; i < pts.length; i++) {
+          const [ax, az] = pts[i];
+          const [bx, bz] = pts[(i + 1) % pts.length];
+          const k = roundKey(ax, az, bx, bz);
+          let seg = wallKeyMap.get(k);
+          if (!seg) {
+            seg = { ax, az, bx, bz, doors: [] };
+            wallKeyMap.set(k, seg);
+            wallSegs.push(seg);
+          }
+          // Attach any door/passage openings on this room edge
+          for (const op of floor.openings || []) {
+            if (op.room_id === rm.id && op.edge === i && (op.type === "door" || op.type === "passage")) {
+              const len = Math.hypot(bx - ax, bz - az) || 1;
+              const centerT = Number(op.offset ?? len / 2) / len;
+              const halfT = (Number(op.width ?? 0.9) / 2) / len;
+              seg.doors.push([Math.max(0, centerT - halfT), Math.min(1, centerT + halfT)]);
+            }
+          }
+        }
+      }
+      for (const w of floor.walls || []) {
+        if (w.a && w.b) {
+          wallSegs.push({ ax: w.a[0], az: w.a[1], bx: w.b[0], bz: w.b[1], doors: [] });
+        }
+      }
+
+      // Helper: point-in-polygon
+      const inPoly = (px, pz, poly) => {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const [xi, zi] = poly[i];
+          const [xj, zj] = poly[j];
+          if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi + 1e-9) + xi) {
+            inside = !inside;
+          }
+        }
+        return inside;
+      };
+
+      // Helper: count solid walls & doors crossed by segment (p1 -> p2)
+      const countCrossings = (xA, zA, xB, zB) => {
+        let walls = 0;
+        let doors = 0;
+        const dx = xB - xA;
+        const dz = zB - zA;
+        for (let i = 0; i < wallSegs.length; i++) {
+          const s = wallSegs[i];
+          const sx = s.bx - s.ax;
+          const sz = s.bz - s.az;
+          const denom = dx * sz - dz * sx;
+          if (Math.abs(denom) < 1e-7) continue;
+          const t = ((s.ax - xA) * sz - (s.az - zA) * sx) / denom;
+          const u = ((s.ax - xA) * dz - (s.az - zA) * dx) / denom;
+          if (t > 0.02 && t < 0.98 && u >= 0 && u <= 1) {
+            const inDoor = s.doors.some(([d0, d1]) => u >= d0 && u <= d1);
+            if (inDoor) doors++;
+            else walls++;
+          }
+        }
+        return { walls, doors };
+      };
+
+      // Helper: multi-stop RGB color ramp
+      const sampleRamp = (val, stops) => {
+        if (val <= stops[0][0]) return stops[0][1];
+        for (let i = 1; i < stops.length; i++) {
+          if (val <= stops[i][0]) {
+            const t = (val - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]);
+            const c0 = stops[i - 1][1];
+            const c1 = stops[i][1];
+            return [
+              Math.round(c0[0] + (c1[0] - c0[0]) * t),
+              Math.round(c0[1] + (c1[1] - c0[1]) * t),
+              Math.round(c0[2] + (c1[2] - c0[2]) * t)
+            ];
+          }
+        }
+        return stops[stops.length - 1][1];
+      };
+
+      const TEMP_STOPS = [
+        [18, [30, 144, 255]],
+        [21, [0, 235, 255]],
+        [24, [34, 197, 94]],
+        [27, [250, 204, 21]],
+        [30, [249, 115, 22]],
+        [34, [239, 68, 68]]
+      ];
+      const HUM_STOPS = [
+        [25, [245, 158, 11]],
+        [42, [34, 197, 94]],
+        [52, [0, 235, 255]],
+        [62, [59, 130, 246]],
+        [75, [168, 85, 247]]
+      ];
+      const WIFI_STOPS = [
+        [-88, [239, 68, 68]],
+        [-75, [249, 115, 22]],
+        [-65, [250, 204, 21]],
+        [-50, [0, 230, 200]],
+        [-32, [34, 197, 94]]
+      ];
+
+      // 4. Rasterize spatial field to offscreen canvas
+      const W = 144;
+      const H = 144;
+      const canvas = document.createElement("canvas");
+      canvas.width = W;
+      canvas.height = H;
+      const ctx = canvas.getContext("2d");
+      const img = ctx.createImageData(W, H);
+      const data = img.data;
+      const spanX = x1 - x0;
+      const spanZ = z1 - z0;
+
+      for (let py = 0; py < H; py++) {
+        const wz = z0 + ((py + 0.5) / H) * spanZ;
+        for (let px = 0; px < W; px++) {
+          const wx = x0 + ((px + 0.5) / W) * spanX;
+          let inside = false;
+          for (let r = 0; r < roomPolys.length; r++) {
+            if (inPoly(wx, wz, roomPolys[r])) { inside = true; break; }
+          }
+          const idx = (py * W + px) * 4;
+          if (!inside) {
+            data[idx + 3] = 0;
+            continue;
+          }
+
+          let rgb;
+          if (heatMode === "wifi") {
+            let bestRssi = -95;
+            for (let s = 0; s < sources.length; s++) {
+              const src = sources[s];
+              const d = Math.max(0.35, Math.hypot(wx - src.x, wz - src.z));
+              const { walls, doors } = countCrossings(wx, wz, src.x, src.z);
+              const rssi = (src.txPower ?? -30) - 20 * Math.log10(d) - walls * 10.5 - doors * 2.5;
+              if (rssi > bestRssi) bestRssi = rssi;
+            }
+            rgb = sampleRamp(bestRssi, WIFI_STOPS);
+          } else {
+            let wSum = 0;
+            let vSum = 0;
+            for (let s = 0; s < sources.length; s++) {
+              const src = sources[s];
+              const d = Math.hypot(wx - src.x, wz - src.z);
+              const { walls, doors } = countCrossings(wx, wz, src.x, src.z);
+              const atten = walls > 0 ? Math.pow(0.035, walls) : (doors > 0 ? 0.45 : 1.0);
+              const w = atten / (Math.pow(d, 2.2) + 0.06);
+              wSum += w;
+              vSum += w * src.value;
+            }
+            const val = wSum > 0 ? vSum / wSum : sources[0].value;
+            rgb = sampleRamp(val, heatMode === "humidity" ? HUM_STOPS : TEMP_STOPS);
+          }
+
+          data[idx] = rgb[0];
+          data[idx + 1] = rgb[1];
+          data[idx + 2] = rgb[2];
+          data[idx + 3] = 195;
+        }
+      }
+
+      ctx.putImageData(img, 0, 0);
+      return { canvas, x0, x1, z0, z1, count: sources.length };
     },
     async saveBuildingNow(customBuilding = null) {
       const panel = window.nfPanel;
