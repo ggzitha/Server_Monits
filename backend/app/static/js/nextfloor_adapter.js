@@ -158,6 +158,64 @@ export async function createNextFloorHass(options = {}) {
   let sensorHistoryCache = {}; // identifier -> { readings: [...], tempSeries: [...], humSeries: [...] }
   let activeSensorIdentifier = "server_alpha_env";
   let expandedSensorIdentifier = null; // null = all cards show compact Gauges-only mode; identifier = that card shows full Gauges + Readings + 24h Chart below
+  let wifiSurveyPointsCache = [];
+  let wifiSsidsCache = [];
+  let wifiApsCache = [];
+  let wifiBandsCache = [];
+  let wifiChannelsCache = [];
+  let selectedWifiSsid = ""; // "" = All Wi-Fi APs
+  let selectedWifiBand = ""; // "" | "2.4GHz" | "5GHz" | "6GHz"
+  let selectedWifiChannel = null; // number | null
+  let selectedObject = null; // { kind: "furniture"|"sensor"|"wifi_point"|"device", id, floorId }
+  let activeTimeTravelState = null; // { t: ms, hass: hassObj } | null
+
+  // Shared Object Registry (Task 6): single definition for all DCIM & monitoring extras
+  const EXTRA_OBJECT_REGISTRY = {
+    thermohygro_sensor: { category: "sensor", label: "Thermohygrometer", icon: "🌡", color: "#00f0ff", uHeight: null },
+    rack_42u: { category: "rack", label: "42U Rack", icon: "🗄️", color: "#38bdf8", uHeight: 42 },
+    rack_24u: { category: "rack", label: "24U Rack", icon: "🗄️", color: "#38bdf8", uHeight: 24 },
+    wifi_ap: { category: "wifi", label: "Wi-Fi AP", icon: "📶", color: "#22c55e", uHeight: null },
+    wifi_rssi_point: { category: "wifi", label: "RSSI Survey Point", icon: "📡", color: "#22c55e", uHeight: null },
+    crac_unit: { category: "cooling", label: "CRAC Unit", icon: "❄️", color: "#38bdf8", uHeight: null },
+    ups_cabinet: { category: "power", label: "UPS Cabinet", icon: "🔋", color: "#f59e0b", uHeight: null },
+    fingerprint_reader: { category: "security", label: "Fingerprint Reader", icon: "🔐", color: "#22c55e", uHeight: null },
+    pc_workstation: { category: "compute", label: "Workstation", icon: "🖥️", color: "#38bdf8", uHeight: null },
+    ac_outdoor_unit: { category: "cooling", label: "AC Outdoor", icon: "🌀", color: "#38bdf8", uHeight: null },
+    cable_power: { category: "cable", label: "Power Cable", icon: "⚡", color: "#ef4444", uHeight: null },
+    cable_fiber: { category: "cable", label: "Fiber Optic", icon: "💎", color: "#00f0ff", uHeight: null },
+    cable_ethernet: { category: "cable", label: "Ethernet LAN", icon: "🌐", color: "#3b82f6", uHeight: null },
+    cable_tray: { category: "cable", label: "Cable Tray", icon: "🪜", color: "#94a3b8", uHeight: null }
+  };
+
+  function normalizeBandClient(band, channel = null) {
+    const raw = String(band || "").trim().toLowerCase().replace(/\s+/g, "");
+    if (["2.4", "2.4g", "2.4ghz", "2g"].includes(raw)) return "2.4GHz";
+    if (["5", "5g", "5ghz"].includes(raw)) return "5GHz";
+    if (["6", "6g", "6ghz"].includes(raw)) return "6GHz";
+    if (["n/a", "na", "unknown"].includes(raw)) return "N/A";
+    const ch = Number(channel);
+    if (Number.isFinite(ch) && ch > 0) {
+      if (ch <= 14) return "2.4GHz";
+      if (ch <= 177) return "5GHz";
+      return "6GHz";
+    }
+    return "5GHz";
+  }
+
+  async function loadWifiSurveyFromDb() {
+    try {
+      const res = await fetch("/api/v1/wifi-survey");
+      if (res.ok) {
+        const data = await res.json();
+        wifiSurveyPointsCache = Array.isArray(data.points) ? data.points : [];
+        wifiSsidsCache = Array.isArray(data.ssids) ? data.ssids : [];
+        wifiApsCache = Array.isArray(data.aps) ? data.aps : [];
+        wifiBandsCache = Array.isArray(data.bands) ? data.bands : [];
+        wifiChannelsCache = Array.isArray(data.channels) ? data.channels : [];
+      }
+    } catch (e) {}
+  }
+  await loadWifiSurveyFromDb();
 
   function parseDbTimestampMs(ts) {
     if (ts === null || ts === undefined) return NaN;
@@ -558,11 +616,155 @@ export async function createNextFloorHass(options = {}) {
     return { floorId: "ground", x: 3.5, z: 2.5, y: 2.2 };
   }
 
-  function buildCardDescriptorForSensor(s, b, index = 0, total = 1) {
+  // Single Shared Time Travel / Live Selector (Task 5):
+  // Pill, gauges, 24h charts, 3D labels, tooltips, and 2D badges ALL read from this selector.
+  function resolveSensorStateAtTime(s, hassObj = null, replay = null) {
+    const isTT = Boolean(replay && Number.isFinite(Number(replay.t)));
+    const targetMs = isTT ? Number(replay.t) : Date.now();
+    const cached = sensorHistoryCache[s.identifier] || build24hSeriesForSensor(s, []);
+    const raw = Array.isArray(cached.rawReadings) ? cached.rawReadings : [];
+    const tempId = `sensor.${s.identifier}_temp`;
+    const humId = `sensor.${s.identifier}_humidity`;
+    const fmtTime = (ms) => {
+      const d = new Date(ms);
+      return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    };
+    const fmtFull = (ms) => {
+      const d = new Date(ms);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${fmtTime(ms)}:${String(d.getSeconds()).padStart(2, "0")}`;
+    };
+
+    if (!isTT) {
+      const temp = s.current_temperature !== null && s.current_temperature !== undefined ? Number(s.current_temperature) : null;
+      const humidity = s.current_humidity !== null && s.current_humidity !== undefined ? Number(s.current_humidity) : null;
+      return {
+        isTimeTravel: false,
+        targetMs,
+        cursorTimeLabel: fmtTime(targetMs),
+        cursorFullTime: fmtFull(targetMs),
+        cursorIndex: 23,
+        temp,
+        humidity,
+        noData: temp === null && humidity === null,
+        hist: cached
+      };
+    }
+
+    // 1. Read exact value from Time Travel replayer hass.states (same source as 3D pills!)
+    const hStates = hassObj?.states || {};
+    const pillT = hStates[tempId]?.state;
+    const pillH = hStates[humId]?.state;
+    let temp = (pillT !== undefined && pillT !== "unavailable" && pillT !== "unknown" && Number.isFinite(Number(pillT))) ? Number(pillT) : null;
+    let humidity = (pillH !== undefined && pillH !== "unavailable" && pillH !== "unknown" && Number.isFinite(Number(pillH))) ? Number(pillH) : null;
+
+    // 2. Nearest historical reading at or before targetMs (for fallback & chart rescaling)
+    const timed = raw
+      .map(r => ({
+        ms: parseDbTimestampMs(r.timestamp),
+        t: r.temperature !== null && r.temperature !== undefined && Number.isFinite(Number(r.temperature)) ? Number(r.temperature) : null,
+        h: r.humidity !== null && r.humidity !== undefined && Number.isFinite(Number(r.humidity)) ? Number(r.humidity) : null
+      }))
+      .filter(r => Number.isFinite(r.ms))
+      .sort((a, b) => a.ms - b.ms);
+
+    let nearest = null;
+    for (let i = timed.length - 1; i >= 0; i--) {
+      if (timed[i].ms <= targetMs) {
+        nearest = timed[i];
+        break;
+      }
+    }
+    if (temp === null && nearest && nearest.t !== null) temp = nearest.t;
+    if (humidity === null && nearest && nearest.h !== null) humidity = nearest.h;
+
+    // 3. Re-slice the 24h chart window to the Time Travel range containing targetMs
+    const winEnd = Math.max(targetMs, timed.length ? Math.min(timed[timed.length - 1].ms, targetMs + 6 * 3600000) : targetMs);
+    const winStart = winEnd - 24 * 3600000;
+    const inWin = timed.filter(r => r.ms >= winStart && r.ms <= winEnd);
+    const tempPts = [];
+    const humPts = [];
+    const chartPoints = [];
+    let cursorIndex = 23;
+    let bestDist = Infinity;
+
+    for (let i = 0; i < 24; i++) {
+      const slotMs = winStart + (i / 23) * (winEnd - winStart);
+      const dist = Math.abs(slotMs - targetMs);
+      if (dist < bestDist) {
+        bestDist = dist;
+        cursorIndex = i;
+      }
+      // Find nearest sample at or before slotMs
+      let sample = null;
+      for (let j = inWin.length - 1; j >= 0; j--) {
+        if (inWin[j].ms <= slotMs) { sample = inWin[j]; break; }
+      }
+      if (!sample && inWin.length) sample = inWin[0];
+      const tv = sample?.t ?? temp ?? Number(s.current_temperature ?? 21.5);
+      const hv = sample?.h ?? humidity ?? Number(s.current_humidity ?? 45.0);
+      tempPts.push(tv);
+      humPts.push(hv);
+      chartPoints.push({
+        timeLabel: fmtTime(slotMs),
+        fullTime: fmtFull(slotMs),
+        temp: Math.round(tv * 100) / 100,
+        hum: Math.round(hv * 100) / 100
+      });
+    }
+    // Pin cursor point to exact pill/gauge value so pill = gauge = chart cursor
+    if (temp !== null) {
+      tempPts[cursorIndex] = temp;
+      chartPoints[cursorIndex].temp = Math.round(temp * 100) / 100;
+    }
+    if (humidity !== null) {
+      humPts[cursorIndex] = humidity;
+      chartPoints[cursorIndex].hum = Math.round(humidity * 100) / 100;
+    }
+    chartPoints[cursorIndex].fullTime = fmtFull(targetMs);
+    chartPoints[cursorIndex].timeLabel = fmtTime(targetMs);
+
+    const minTemp = Math.min(...tempPts);
+    const maxTemp = Math.max(...tempPts);
+    const avgTemp = tempPts.reduce((a, b) => a + b, 0) / tempPts.length;
+    const minHum = Math.min(...humPts);
+    const maxHum = Math.max(...humPts);
+    const avgHum = humPts.reduce((a, b) => a + b, 0) / humPts.length;
+    const tSpan = Math.max(0.5, maxTemp - minTemp);
+    const hSpan = Math.max(1.0, maxHum - minHum);
+    const visualTemp = tempPts.map(v => Math.round((22 + ((v - minTemp) / tSpan) * 66) * 10) / 10);
+    const visualHum = humPts.map(v => Math.round((18 + ((v - minHum) / hSpan) * 62) * 10) / 10);
+
+    return {
+      isTimeTravel: true,
+      targetMs,
+      cursorTimeLabel: fmtTime(targetMs),
+      cursorFullTime: fmtFull(targetMs),
+      cursorIndex,
+      temp,
+      humidity,
+      noData: temp === null && humidity === null,
+      hist: {
+        rawReadings: raw,
+        tempPts,
+        humPts,
+        chartPoints,
+        minTemp,
+        maxTemp,
+        avgTemp,
+        minHum,
+        maxHum,
+        avgHum,
+        curves: { solar: visualTemp, use: visualHum }
+      }
+    };
+  }
+
+  function buildCardDescriptorForSensor(s, b, index = 0, total = 1, hassObj = null, replay = null) {
     if (!s) return null;
-    const hist = sensorHistoryCache[s.identifier] || build24hSeriesForSensor(s, []);
-    const temp = Number(s.current_temperature ?? 21.5);
-    const humidity = Number(s.current_humidity ?? 45.0);
+    const resolved = resolveSensorStateAtTime(s, hassObj, replay);
+    const hist = resolved.hist;
+    const temp = resolved.temp;
+    const humidity = resolved.humidity;
     const anchor = findSensor3DAnchor(s, b);
     const cleanTitle = (s.name || s.identifier)
       .replace("Thermohygrograph", "")
@@ -576,13 +778,20 @@ export async function createNextFloorHass(options = {}) {
       fullName: s.name || s.identifier,
       areaId: s.area_id || "server_alpha",
       at: anchor,
-      temp,
-      humidity,
+      temp: temp ?? 0,
+      humidity: humidity ?? 0,
+      hasTemp: temp !== null,
+      hasHum: humidity !== null,
+      noData: resolved.noData,
+      isTimeTravel: resolved.isTimeTravel,
+      cursorIndex: resolved.cursorIndex,
+      cursorTimeLabel: resolved.cursorTimeLabel,
+      cursorFullTime: resolved.cursorFullTime,
       powerKw: s.power_kw,
       battery: s.battery_level ?? 98,
-      status: s.status || "online",
-      tempRatio: Math.max(0.06, Math.min(1, temp / 45)),
-      humRatio: Math.max(0.06, Math.min(1, humidity / 100)),
+      status: resolved.noData ? "offline" : (s.status || "online"),
+      tempRatio: temp !== null ? Math.max(0.06, Math.min(1, temp / 45)) : 0,
+      humRatio: humidity !== null ? Math.max(0.06, Math.min(1, humidity / 100)) : 0,
       minTemp: hist.minTemp,
       maxTemp: hist.maxTemp,
       avgTemp: hist.avgTemp,
@@ -597,6 +806,7 @@ export async function createNextFloorHass(options = {}) {
       grafanaNewTab: s.grafana_new_tab !== false,
       grafanaUrl: s.grafana_url || "",
       expanded: s.identifier === expandedSensorIdentifier,
+      selected: selectedObject?.kind === "sensor" && selectedObject?.id === s.identifier,
       indexLabel: `${index + 1}/${total}`
     };
   }
@@ -655,10 +865,11 @@ export async function createNextFloorHass(options = {}) {
     pushHassToPanel();
   }, 60000);
 
+  const initialIsDark = (document.documentElement.getAttribute("data-theme") || localStorage.getItem("monit_theme") || "neon") !== "light";
   const hass = {
     language: activeLang,
-    selectedTheme: { dark: true },
-    themes: { darkMode: true },
+    selectedTheme: { dark: initialIsDark },
+    themes: { darkMode: initialIsDark },
     config: {
       latitude: siteLat,
       longitude: siteLon,
@@ -1158,9 +1369,10 @@ export async function createNextFloorHass(options = {}) {
       const s = dbSensorsCache[idx];
       return buildCardDescriptorForSensor(s, customBuilding || window.nfPanel?.data?.building || building, idx, dbSensorsCache.length);
     },
-    getLiveSensorCards(b, floorId = null, roomId = null) {
+    getLiveSensorCards(b, floorId = null, roomId = null, hassObj = null, replay = null) {
       if (!dbSensorsCache.length) return [];
       const targetB = b || window.nfPanel?.data?.building || building;
+      activeTimeTravelState = replay && Number.isFinite(Number(replay.t)) ? { t: Number(replay.t), hass: hassObj } : null;
 
       // Return ALL thermohygrometer sensors on the active floor (or inside the selected room)
       let roomAreaFilter = null;
@@ -1179,10 +1391,16 @@ export async function createNextFloorHass(options = {}) {
         const anchor = findSensor3DAnchor(s, targetB);
         if (floorId && anchor.floorId !== floorId) return;
         if (roomAreaFilter && s.area_id !== roomAreaFilter) return;
-        const card = buildCardDescriptorForSensor(s, targetB, idx, dbSensorsCache.length);
+        const card = buildCardDescriptorForSensor(s, targetB, idx, dbSensorsCache.length, hassObj, replay);
         if (card) cards.push(card);
       });
       return cards;
+    },
+    getSensorStateAtActiveTime(identifier) {
+      const s = dbSensorsCache.find(x => x.identifier === identifier);
+      if (!s) return null;
+      const tt = activeTimeTravelState;
+      return resolveSensorStateAtTime(s, tt?.hass || hass, tt ? { t: tt.t } : null);
     },
     buildFloorHeatmapCanvas(floor, heatMode, hassObj = null) {
       if (!floor || !Array.isArray(floor.rooms) || !floor.rooms.length) return null;
@@ -1218,21 +1436,44 @@ export async function createNextFloorHass(options = {}) {
           }
         }
       } else if (heatMode === "wifi") {
-        // Look for placed WiFi APs in furniture
-        for (const f of floor.furniture || []) {
-          const t = String(f.type || "").toLowerCase();
-          if (t.includes("wifi") || t.includes("router") || t.endsWith(":ap")) {
-            sources.push({ x: Number(f.x), z: Number(f.z), txPower: -28 });
+        // 1a. Prefer measured Wi-Fi Survey RSSI points filtered by shared AP/SSID + Band + Channel state
+        const floorSurvey = wifiSurveyPointsCache.filter(p => {
+          if ((p.floor_id || "ground") !== floor.id) return false;
+          if (selectedWifiSsid && p.ssid !== selectedWifiSsid) return false;
+          if (selectedWifiBand && normalizeBandClient(p.band, p.channel) !== selectedWifiBand) return false;
+          if (selectedWifiChannel !== null && Number(p.channel) !== Number(selectedWifiChannel)) return false;
+          return true;
+        });
+        if (floorSurvey.length > 0) {
+          for (const p of floorSurvey) {
+            sources.push({
+              x: Number(p.x),
+              z: Number(p.z),
+              value: Number(p.rssi_dbm),
+              measured: true,
+              ssid: p.ssid,
+              band: normalizeBandClient(p.band, p.channel),
+              channel: p.channel ?? null
+            });
           }
-        }
-        // If no dedicated WiFi AP furniture is placed yet, place a default AP in the first room (or Hardening/NOC room)
-        if (!sources.length && floor.rooms.length) {
-          const apRoom = floor.rooms.find(r => (r.name || "").toLowerCase().includes("hardening") || (r.name || "").toLowerCase().includes("noc")) || floor.rooms[0];
-          const pts = apRoom.points || apRoom.poly || [];
-          if (pts.length) {
-            let sx = 0, sz = 0;
-            for (const pt of pts) { sx += Number(pt[0]); sz += Number(pt[1]); }
-            sources.push({ x: sx / pts.length, z: sz / pts.length, txPower: -30 });
+        } else {
+          // 1b. Fallback: placed WiFi APs in furniture (filtered by SSID/band if matching) using path-loss model
+          for (const f of floor.furniture || []) {
+            const t = String(f.type || "").toLowerCase();
+            if (t.includes("wifi") || t.includes("router") || t.endsWith(":ap")) {
+              if (selectedWifiSsid && (f.name || "").trim() !== selectedWifiSsid) continue;
+              if (selectedWifiBand && f.band && normalizeBandClient(f.band, f.channel) !== selectedWifiBand) continue;
+              sources.push({ x: Number(f.x), z: Number(f.z), txPower: -28 });
+            }
+          }
+          if (!sources.length && !selectedWifiSsid && !selectedWifiBand && selectedWifiChannel === null && floor.rooms.length) {
+            const apRoom = floor.rooms.find(r => (r.name || "").toLowerCase().includes("hardening") || (r.name || "").toLowerCase().includes("noc")) || floor.rooms[0];
+            const pts = apRoom.points || apRoom.poly || [];
+            if (pts.length) {
+              let sx = 0, sz = 0;
+              for (const pt of pts) { sx += Number(pt[0]); sz += Number(pt[1]); }
+              sources.push({ x: sx / pts.length, z: sz / pts.length, txPower: -30 });
+            }
           }
         }
       }
@@ -1398,15 +1639,36 @@ export async function createNextFloorHass(options = {}) {
 
           let rgb;
           if (heatMode === "wifi") {
-            let bestRssi = -95;
-            for (let s = 0; s < sources.length; s++) {
-              const src = sources[s];
-              const d = Math.max(0.35, Math.hypot(wx - src.x, wz - src.z));
-              const { walls, doors } = countCrossings(wx, wz, src.x, src.z);
-              const rssi = (src.txPower ?? -30) - 20 * Math.log10(d) - walls * 10.5 - doors * 2.5;
-              if (rssi > bestRssi) bestRssi = rssi;
+            if (sources[0]?.measured) {
+              // Wall-aware IDW interpolation of measured Wi-Fi Survey RSSI points
+              let wSum = 0;
+              let vSum = 0;
+              for (let s = 0; s < sources.length; s++) {
+                const src = sources[s];
+                const d = Math.hypot(wx - src.x, wz - src.z);
+                const { walls, doors } = countCrossings(wx, wz, src.x, src.z);
+                const atten = walls > 0 ? Math.pow(0.08, walls) : (doors > 0 ? 0.55 : 1.0);
+                const w = atten / (Math.pow(d, 2.0) + 0.08);
+                // Account for wall attenuation & gentle distance falloff away from single points
+                const localVal = sources.length === 1
+                  ? src.value - 8.0 * Math.log10(Math.max(1.0, d)) - walls * 9.0 - doors * 2.0
+                  : src.value - walls * 6.5 - doors * 1.5;
+                wSum += w;
+                vSum += w * localVal;
+              }
+              const rssiVal = wSum > 0 ? vSum / wSum : sources[0].value;
+              rgb = sampleRamp(rssiVal, WIFI_STOPS);
+            } else {
+              let bestRssi = -95;
+              for (let s = 0; s < sources.length; s++) {
+                const src = sources[s];
+                const d = Math.max(0.35, Math.hypot(wx - src.x, wz - src.z));
+                const { walls, doors } = countCrossings(wx, wz, src.x, src.z);
+                const rssi = (src.txPower ?? -30) - 20 * Math.log10(d) - walls * 10.5 - doors * 2.5;
+                if (rssi > bestRssi) bestRssi = rssi;
+              }
+              rgb = sampleRamp(bestRssi, WIFI_STOPS);
             }
-            rgb = sampleRamp(bestRssi, WIFI_STOPS);
           } else {
             let wSum = 0;
             let vSum = 0;
@@ -1431,6 +1693,20 @@ export async function createNextFloorHass(options = {}) {
       }
 
       ctx.putImageData(img, 0, 0);
+      if (heatMode === "wifi" && sources[0]?.measured) {
+        // Draw crisp RSSI survey spot pins + dBm labels on the heatmap texture
+        for (const src of sources) {
+          const px = ((src.x - x0) / Math.max(0.01, x1 - x0)) * W;
+          const pz = ((src.z - z0) / Math.max(0.01, z1 - z0)) * H;
+          ctx.beginPath();
+          ctx.arc(px, pz, 4, 0, Math.PI * 2);
+          ctx.fillStyle = "#ffffff";
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = "#070b14";
+          ctx.stroke();
+        }
+      }
       return { canvas, x0, x1, z0, z1, count: sources.length };
     },
     async saveBuildingNow(customBuilding = null) {
@@ -1961,8 +2237,231 @@ export async function createNextFloorHass(options = {}) {
       if (panel && panel.data) panel.data.edit(curB);
       await this.saveBuildingNow(curB);
       return true;
+    },
+    getObjectRegistry() {
+      return EXTRA_OBJECT_REGISTRY;
+    },
+    getSelectedObject() {
+      return selectedObject;
+    },
+    setSelectedObject(sel) {
+      selectedObject = sel || null;
+      if (sel?.kind === "sensor" && sel?.id) {
+        activeSensorIdentifier = sel.id;
+        expandedSensorIdentifier = sel.id;
+      }
+      const panel = window.nfPanel;
+      const ed = panel?.shadowRoot?.querySelector("fp3d-editor");
+      if (ed) {
+        if (sel?.kind === "furniture" && sel.id) ed._furnitureId = sel.id;
+        ed.requestUpdate?.();
+      }
+      const v3d = panel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
+      if (v3d) {
+        if (sel?.kind === "furniture") v3d.selectedFurniture = sel.id;
+        v3d.requestUpdate?.();
+      }
+      window.dispatchEvent(new CustomEvent("monits-selection-changed", { detail: selectedObject }));
+    },
+    getWifiSurveyPoints() {
+      return wifiSurveyPointsCache;
+    },
+    getFilteredWifiPoints(floorId = null) {
+      return wifiSurveyPointsCache.filter(p => {
+        if (floorId && (p.floor_id || "ground") !== floorId) return false;
+        if (selectedWifiSsid && p.ssid !== selectedWifiSsid) return false;
+        if (selectedWifiBand && normalizeBandClient(p.band, p.channel) !== selectedWifiBand) return false;
+        if (selectedWifiChannel !== null && Number(p.channel) !== Number(selectedWifiChannel)) return false;
+        return true;
+      });
+    },
+    getWifiSsids() {
+      return wifiSsidsCache;
+    },
+    getWifiApOptions() {
+      // Combine surveyed APs (with observed bands/channels) + placed wifi_ap furniture in building
+      const bySsid = new Map();
+      for (const ap of wifiApsCache) {
+        bySsid.set(ap.ssid, {
+          ssid: ap.ssid,
+          bands: new Set(ap.bands || []),
+          channels: new Set(ap.channels || []),
+          count: ap.count || 0
+        });
+      }
+      const curB = window.nfPanel?.data?.building || building;
+      for (const fl of curB?.floors || []) {
+        for (const f of fl.furniture || []) {
+          const t = String(f.type || "").toLowerCase();
+          if (t.includes("wifi") || t.includes("router") || t.endsWith(":ap")) {
+            const name = (f.name || f.id || "Wi-Fi AP").trim();
+            const rec = bySsid.get(name) || { ssid: name, bands: new Set(), channels: new Set(), count: 0 };
+            if (Array.isArray(f.bands)) f.bands.forEach(b => rec.bands.add(normalizeBandClient(b)));
+            else if (f.band) rec.bands.add(normalizeBandClient(f.band, f.channel));
+            else if (!rec.bands.size) { rec.bands.add("2.4GHz"); rec.bands.add("5GHz"); }
+            if (f.channel) rec.channels.add(Number(f.channel));
+            bySsid.set(name, rec);
+          }
+        }
+      }
+      const bandOrder = { "2.4GHz": 0, "5GHz": 1, "6GHz": 2, "N/A": 3 };
+      return [...bySsid.values()]
+        .sort((a, b) => a.ssid.localeCompare(b.ssid))
+        .map(rec => {
+          const bands = [...rec.bands].filter(b => b !== "N/A").sort((a, b) => (bandOrder[a] ?? 9) - (bandOrder[b] ?? 9));
+          const channels = [...rec.channels].filter(c => Number.isFinite(c)).sort((a, b) => a - b);
+          const bandStr = bands.length ? bands.map(b => b.replace("GHz", " GHz")).join(" / ") : "N/A";
+          const chStr = channels.length ? ` ch${channels.join(",")}` : "";
+          return {
+            ssid: rec.ssid,
+            bands,
+            channels,
+            count: rec.count,
+            label: `${rec.ssid} — ${bandStr}${chStr}`
+          };
+        });
+    },
+    getWifiBandChannelOptions() {
+      const bands = new Set(["2.4GHz", "5GHz", "6GHz", ...wifiBandsCache]);
+      const channels = new Set(wifiChannelsCache);
+      for (const p of wifiSurveyPointsCache) {
+        if (p.band && p.band !== "N/A") bands.add(normalizeBandClient(p.band, p.channel));
+        if (p.channel !== null && p.channel !== undefined) channels.add(Number(p.channel));
+      }
+      return {
+        bands: ["2.4GHz", "5GHz", "6GHz"].filter(b => bands.has(b)),
+        channels: [...channels].filter(c => Number.isFinite(c)).sort((a, b) => a - b)
+      };
+    },
+    getSelectedWifiSsid() {
+      return selectedWifiSsid;
+    },
+    getSelectedWifiBandChannel() {
+      if (selectedWifiChannel !== null) return `ch:${selectedWifiChannel}`;
+      if (selectedWifiBand) return `band:${selectedWifiBand}`;
+      return "";
+    },
+    setSelectedWifiSsid(ssid) {
+      selectedWifiSsid = ssid || "";
+      const panel = window.nfPanel;
+      const v3d = panel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
+      if (v3d && v3d.heatMode === "wifi") v3d.applyTint?.();
+      panel?.shadowRoot?.querySelector("fp3d-editor")?.requestUpdate?.();
+      window.dispatchEvent(new CustomEvent("monits-wifi-survey-changed"));
+    },
+    setWifiBandChannelFilter(val) {
+      const raw = String(val || "");
+      selectedWifiBand = "";
+      selectedWifiChannel = null;
+      if (raw.startsWith("band:")) {
+        selectedWifiBand = normalizeBandClient(raw.slice(5));
+      } else if (raw.startsWith("ch:")) {
+        const n = Number(raw.slice(3));
+        if (Number.isFinite(n)) selectedWifiChannel = n;
+      }
+      const panel = window.nfPanel;
+      const v3d = panel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
+      if (v3d && v3d.heatMode === "wifi") v3d.applyTint?.();
+      panel?.shadowRoot?.querySelector("fp3d-editor")?.requestUpdate?.();
+      window.dispatchEvent(new CustomEvent("monits-wifi-survey-changed"));
+    },
+    async refreshWifiSurveyFromDb() {
+      await loadWifiSurveyFromDb();
+      const panel = window.nfPanel;
+      const v3d = panel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
+      if (v3d && v3d.heatMode === "wifi") v3d.applyTint?.();
+      panel?.shadowRoot?.querySelector("fp3d-editor")?.requestUpdate?.();
+      window.dispatchEvent(new CustomEvent("monits-wifi-survey-changed"));
+      return { points: wifiSurveyPointsCache, ssids: wifiSsidsCache, aps: wifiApsCache };
+    },
+    async addWifiSurveyPoint({ ssid, bssid, band, channel, rssi_dbm, floor_id, x, z, y, notes }) {
+      const res = await fetch("/api/v1/wifi-survey", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+        body: JSON.stringify({
+          ssid,
+          ...(bssid ? { bssid } : {}),
+          band: normalizeBandClient(band, channel),
+          ...(channel !== undefined && channel !== null && channel !== "" ? { channel: Number(channel) } : {}),
+          rssi_dbm: Number(rssi_dbm),
+          floor_id: floor_id || "ground",
+          x: Number(x),
+          z: Number(z),
+          y: Number(y ?? 1.2),
+          ...(notes ? { notes } : {})
+        })
+      });
+      if (res.ok) {
+        const created = await res.json();
+        await this.refreshWifiSurveyFromDb();
+        return created;
+      }
+      return null;
+    },
+    async updateWifiSurveyPoint(pointId, { ssid, band, channel, rssi_dbm, x, z }) {
+      const res = await fetch(`/api/v1/wifi-survey/${encodeURIComponent(pointId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+        body: JSON.stringify({
+          ...(ssid ? { ssid } : {}),
+          ...(band ? { band: normalizeBandClient(band, channel) } : {}),
+          ...(channel !== undefined && channel !== null && channel !== "" ? { channel: Number(channel) } : {}),
+          ...(rssi_dbm !== undefined && rssi_dbm !== "" ? { rssi_dbm: Number(rssi_dbm) } : {}),
+          ...(x !== undefined && x !== "" ? { x: Number(x) } : {}),
+          ...(z !== undefined && z !== "" ? { z: Number(z) } : {})
+        })
+      });
+      if (res.ok) {
+        await this.refreshWifiSurveyFromDb();
+        return true;
+      }
+      return false;
+    },
+    async deleteWifiSurveyPoint(pointId) {
+      const res = await fetch(`/api/v1/wifi-survey/${encodeURIComponent(pointId)}`, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": getCsrfToken() }
+      });
+      if (res.ok) {
+        await this.refreshWifiSurveyFromDb();
+        return true;
+      }
+      return false;
+    },
+    async importWifiSurvey(format, data, replace = false) {
+      const res = await fetch("/api/v1/wifi-survey/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+        body: JSON.stringify({ format, data, replace })
+      });
+      if (res.ok) {
+        await this.refreshWifiSurveyFromDb();
+        return await res.json();
+      }
+      return null;
     }
   };
+
+  // Sync shared theme state into hass + Neon3D panel instantly on theme toggle
+  window.addEventListener("monits-theme-changed", (ev) => {
+    const isLight = ev?.detail?.theme === "light";
+    hass.selectedTheme = { dark: !isLight };
+    hass.themes = { darkMode: !isLight };
+    const panel = window.nfPanel;
+    if (panel) {
+      const targetStyle = isLight ? "day" : "neon";
+      if (panel._theme !== targetStyle) {
+        panel._theme = targetStyle;
+      }
+      const v3d = panel.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
+      if (v3d) {
+        v3d.theme = targetStyle;
+        v3d.requestUpdate?.();
+      }
+      panel.requestUpdate?.();
+    }
+    pushHassToPanel();
+  });
 
   // Connect WebSocket to /ws/live for realtime push telemetry & virtual states
   try {
@@ -2006,6 +2505,8 @@ export async function createNextFloorHass(options = {}) {
             attributes: { ...prev.attributes, ...(data.attributes || {}) }
           };
           pushHassToPanel();
+        } else if (data.type === "wifi_survey_updated") {
+          void window.monitsApi?.refreshWifiSurveyFromDb?.();
         }
       } catch (e) {
         // ignore malformed packets

@@ -14,9 +14,9 @@
     margin: 0;
     padding: 0;
     overflow: hidden;
-    background: #070b14;
-    color: #e1e9f5;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg-app);
+    color: var(--text-main);
+    font-family: var(--font-sans);
   }
 
   .monits-app-main {
@@ -38,7 +38,7 @@
     min-height: 0;
     overflow: hidden;
     position: relative;
-    background: #070b14;
+    background: var(--bg-app);
   }
 
   neonplan3d-panel, nextfloor-panel {
@@ -48,24 +48,24 @@
     flex-direction: column;
   }
 
-  /* Slide-Over Integrated Control Drawers (Virtual Lights, DB Sensors & 3D Cabling) */
+  /* Slide-Over Integrated Control Drawers (Virtual Lights, DB Sensors, 3D Cabling & Wi-Fi Survey) */
   .monits-drawer {
     position: fixed;
     top: 56px;
     right: 16px;
-    width: 450px;
+    width: 470px;
     max-width: calc(100vw - 32px);
     max-height: calc(100vh - 76px);
-    background: rgba(13, 19, 34, 0.96);
+    background: var(--bg-drawer);
     backdrop-filter: blur(16px);
-    border: 1px solid rgba(0, 240, 255, 0.35);
+    border: 1px solid var(--border-color);
     border-radius: 14px;
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.75);
+    box-shadow: var(--card-shadow);
     z-index: 2500;
     display: none;
     flex-direction: column;
     overflow: hidden;
-    color: #e2e8f0;
+    color: var(--text-main);
   }
 
   .monits-drawer.open {
@@ -77,14 +77,14 @@
     align-items: center;
     justify-content: space-between;
     padding: 12px 16px;
-    background: rgba(6, 11, 22, 0.85);
-    border-bottom: 1px solid rgba(0, 240, 255, 0.2);
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border-color);
   }
 
   .monits-drawer-title {
     font-size: 0.95rem;
     font-weight: 700;
-    color: #00f0ff;
+    color: var(--accent-cyan);
     display: flex;
     align-items: center;
     gap: 8px;
@@ -92,8 +92,8 @@
 
   .monits-drawer-close {
     background: transparent;
-    border: 1px solid rgba(148, 163, 184, 0.3);
-    color: #94a3b8;
+    border: 1px solid var(--border-subtle);
+    color: var(--text-muted);
     border-radius: 6px;
     width: 28px;
     height: 28px;
@@ -102,8 +102,8 @@
   }
 
   .monits-drawer-close:hover {
-    color: #ffffff;
-    border-color: #00f0ff;
+    color: var(--text-main);
+    border-color: var(--accent-cyan);
   }
 
   .monits-drawer-body {
@@ -114,14 +114,21 @@
     gap: 16px;
   }
 
+  .monits-subcard {
+    background: var(--bg-card-inner);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px 12px;
+  }
+
   .monits-section-title {
     font-size: 0.76rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.06em;
-    color: #38bdf8;
+    color: var(--accent-cyan);
     margin: 0 0 8px 0;
-    border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+    border-bottom: 1px solid var(--border-color);
     padding-bottom: 4px;
   }
 
@@ -131,17 +138,18 @@
     justify-content: space-between;
     gap: 8px;
     padding: 8px 10px;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: var(--bg-card-inner);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     margin-bottom: 6px;
     font-size: 0.82rem;
+    color: var(--text-main);
   }
 
   .monits-pill-btn {
-    border: 1px solid rgba(0, 240, 255, 0.35);
-    background: rgba(0, 240, 255, 0.12);
-    color: #00f0ff;
+    border: 1px solid var(--border-color);
+    background: var(--accent-cyan-soft);
+    color: var(--accent-cyan);
     padding: 5px 11px;
     border-radius: 999px;
     font-size: 0.78rem;
@@ -151,9 +159,15 @@
   }
 
   .monits-pill-btn.on {
-    background: #00f0ff;
-    color: #05101c;
-    box-shadow: 0 0 10px rgba(0, 240, 255, 0.45);
+    background: var(--accent-cyan);
+    color: var(--text-on-accent);
+    box-shadow: 0 0 10px var(--accent-cyan-soft);
+  }
+
+  .monits-pill-btn.danger {
+    color: var(--accent-red);
+    border-color: rgba(239, 68, 68, 0.35);
+    background: rgba(239, 68, 68, 0.08);
   }
 
   .monits-sensor-grid {
@@ -162,22 +176,27 @@
     gap: 6px;
     align-items: center;
     padding: 7px 8px;
-    background: rgba(15, 23, 42, 0.85);
-    border: 1px solid rgba(148, 163, 184, 0.15);
+    background: var(--bg-card-inner);
+    border: 1px solid var(--border-subtle);
     border-radius: 8px;
     margin-bottom: 6px;
     font-size: 0.78rem;
   }
 
   .monits-input {
-    background: #070b14;
-    border: 1px solid rgba(148, 163, 184, 0.3);
-    color: #f8fafc;
+    background: var(--bg-app);
+    border: 1px solid var(--border-subtle);
+    color: var(--text-main);
     border-radius: 6px;
     padding: 5px 7px;
     font-size: 0.78rem;
     width: 100%;
     box-sizing: border-box;
+  }
+
+  .monits-input:focus {
+    outline: none;
+    border-color: var(--accent-cyan);
   }
 
   .monits-form-grid {
@@ -191,7 +210,73 @@
     display: flex;
     flex-direction: column;
     gap: 4px;
-    color: #94a3b8;
+    color: var(--text-muted);
+  }
+
+  /* Unified Floating Wi-Fi AP & Channel/Band Filter Bar (2D & 3D) */
+  .wifi-floating-bar {
+    display: none;
+    position: fixed;
+    bottom: 18px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 2200;
+    background: var(--bg-drawer);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    padding: 6px 14px;
+    align-items: center;
+    gap: 8px;
+    box-shadow: var(--card-shadow);
+    color: var(--text-main);
+    font-size: 0.78rem;
+    max-width: 94vw;
+    flex-wrap: wrap;
+  }
+
+  .wifi-floating-bar .wifi-bar-label {
+    font-weight: 700;
+    color: var(--accent-cyan);
+    white-space: nowrap;
+  }
+
+  .wifi-floating-bar select.monits-input {
+    width: auto;
+    min-width: 145px;
+    padding: 3px 9px;
+    font-size: 0.75rem;
+    border-radius: 999px;
+  }
+
+  /* Wi-Fi Band Badges (Theme-aware dark + light) */
+  .wifi-band-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 6px;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+    border: 1px solid currentColor;
+  }
+  .wifi-band-badge.band-24 {
+    color: var(--accent-amber);
+    background: rgba(245, 158, 11, 0.14);
+  }
+  .wifi-band-badge.band-5 {
+    color: var(--accent-cyan);
+    background: var(--accent-cyan-soft);
+  }
+  .wifi-band-badge.band-6 {
+    color: var(--accent-magenta);
+    background: rgba(217, 70, 239, 0.14);
+  }
+  .wifi-band-badge.band-na {
+    color: var(--text-muted);
+    background: var(--bg-surface-elevated);
   }
 </style>
 <script src="/static/neonplan3d/basic-types.js"></script>
@@ -216,7 +301,7 @@
   </div>
   <div class="monits-drawer-body">
     <!-- Section 1: Add & Place New Temperature & Humidity Sensor at Specific Place -->
-    <div style="background: rgba(8, 15, 30, 0.9); border: 1px solid rgba(0, 240, 255, 0.28); border-radius: 10px; padding: 10px 12px;">
+    <div class="monits-subcard">
       <h4 class="monits-section-title" style="margin-top:0;">
         {{ '1. Tambah & Tempatkan Sensor di Lokasi Spesifik' if current_lang == 'id' else '1. Add & Place Sensor at Specific Location' }}
       </h4>
@@ -289,8 +374,8 @@
           <span>{{ 'Query SQL Kelembaban #2 (Opsional jika terpisah)' if current_lang == 'id' else 'Humidity SQL Query #2 (Optional if separate)' }}</span>
           <textarea id="newSensorSqlQueryHumidity" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Humidity FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time" style="font-family:monospace; font-size:0.72rem;"></textarea>
         </label>
-        <div style="grid-column: span 2; display:flex; flex-direction:column; gap:6px; padding-top:4px; border-top:1px solid rgba(0,240,255,0.14);">
-          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:0.74rem; color:#cbd5e1;">
+        <div style="grid-column: span 2; display:flex; flex-direction:column; gap:6px; padding-top:4px; border-top:1px solid var(--border-subtle);">
+          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:0.74rem; color:var(--text-main);">
             <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; flex-direction:row;">
               <input id="newSensorGrafanaLink" type="checkbox" />
               <span>{{ 'Tautkan Klik Grafik ke URL (Grafana)' if current_lang == 'id' else 'Linked URL on Chart Click' }}</span>
@@ -306,7 +391,7 @@
       <button id="btnPlaceSensorIn3D" class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:7px;" onclick="window.handleAddAndPlaceSensor()">
         ➕ {{ 'Tempatkan Sensor di 3D & Simpan ke Database' if current_lang == 'id' else 'Place Sensor at (X, Z, Y) in 3D & Save to DB' }}
       </button>
-      <div id="sensorPlaceStatusMsg" style="font-size:0.74rem; color:#4ade80; margin-top:6px;"></div>
+      <div id="sensorPlaceStatusMsg" style="font-size:0.74rem; color:var(--accent-green); margin-top:6px;"></div>
     </div>
 
     <!-- Section 2: Direct Sensor Readings from Database -->
@@ -319,7 +404,7 @@
           🔄 {{ 'Sinkron SQL' if current_lang == 'id' else 'Sync SQL' }}
         </button>
       </div>
-      <div style="font-size: 0.72rem; color: #94a3b8; margin-bottom: 8px;">
+      <div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 8px;">
         {{ 'Ubah nilai manual atau hubungkan Sumber Data & Query SQL per sensor:' if current_lang == 'id' else 'Edit manual values or bind each sensor to a Grafana Data Source & SQL query:' }}
       </div>
       <div id="dbSensorsList"></div>
@@ -330,7 +415,7 @@
       <h4 class="monits-section-title">
         {{ '3. Sakelar Lampu Ruangan Virtual (Kontrol 3D Langsung)' if current_lang == 'id' else '3. Virtual Room Lights (Direct 3D Control)' }}
       </h4>
-      <div style="background: rgba(8, 15, 30, 0.85); border: 1px solid rgba(0, 240, 255, 0.22); border-radius: 8px; padding: 8px; margin-bottom: 8px;">
+      <div class="monits-subcard" style="padding: 8px; margin-bottom: 8px;">
         <div style="display:grid; grid-template-columns: 1fr 56px 56px 32px auto; gap:5px; align-items:center;">
           <input id="newLightName" type="text" class="monits-input" placeholder="{{ 'Nama Lampu Baru' if current_lang == 'id' else 'New Light Name' }}" />
           <input id="newLightX" type="number" step="0.2" value="2.5" class="monits-input" title="X (m)" placeholder="X" />
@@ -416,9 +501,9 @@
       </div>
 
       <!-- Multi-Point Turning Waypoints & Canvas Picker -->
-      <div style="margin-top:8px; padding:8px; border-radius:8px; background:rgba(8,15,30,0.8); border:1px solid rgba(0,240,255,0.2);">
+      <div class="monits-subcard" style="margin-top:8px; padding:8px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
-          <span style="font-size:0.72rem; color:#94a3b8; font-weight:600;">{{ 'Titik Belok / Waypoints (Opsional)' if current_lang == 'id' else 'Turning Points / Waypoints (Optional)' }}</span>
+          <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">{{ 'Titik Belok / Waypoints (Opsional)' if current_lang == 'id' else 'Turning Points / Waypoints (Optional)' }}</span>
           <div style="display:flex; gap:4px;">
             <button type="button" id="btnPickCablePoints" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 7px;" onclick="window.toggleCablePointPicker()">
               📍 {{ 'Pilih di Denah' if current_lang == 'id' else 'Pick on Plan' }}
@@ -429,7 +514,7 @@
           </div>
         </div>
         <div id="cableWaypointsList" style="display:flex; flex-direction:column; gap:4px;"></div>
-        <div id="cablePickHint" style="display:none; font-size:0.68rem; color:#38bdf8; margin-top:4px;">
+        <div id="cablePickHint" style="display:none; font-size:0.68rem; color:var(--accent-cyan); margin-top:4px;">
           {{ 'Klik pada kanvas denah untuk menambahkan titik belok kabel (X, Z)...' if current_lang == 'id' else 'Click on the floor plan canvas to pick cable turning points (X, Z)...' }}
         </div>
       </div>
@@ -437,7 +522,7 @@
       <button class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:8px;" onclick="handleAddCableRun()">
         ➕ {{ 'Tambahkan Jalur Kabel ke 3D & Simpan DB' if current_lang == 'id' else 'Add Cable Run to 3D Scene & Save to DB' }}
       </button>
-      <div id="cableStatusMsg" style="font-size:0.75rem; color:#4ade80; margin-top:6px;"></div>
+      <div id="cableStatusMsg" style="font-size:0.75rem; color:var(--accent-green); margin-top:6px;"></div>
     </div>
 
     <div>
@@ -449,93 +534,320 @@
   </div>
 </aside>
 
+<!-- Floating 2D & 3D Wi-Fi AP + Channel/Band Filter Bar (duplicate RSSI legend removed; Neon3D main legend remains) -->
+<div id="wifiSsidBar" class="wifi-floating-bar">
+  <span class="wifi-bar-label">📶 {{ 'Wi-Fi AP:' if current_lang == 'id' else 'Wi-Fi AP:' }}</span>
+  <select id="liveWifiSsidSelect" class="monits-input" onchange="window.onWifiSsidFilterChange(this.value)" aria-label="Wi-Fi AP">
+    <option value="">{{ 'Semua Wi-Fi AP (Terkuat)' if current_lang == 'id' else 'All Wi-Fi APs (Best Signal)' }}</option>
+  </select>
+  <span class="wifi-bar-label" style="font-size:0.72rem;">{{ 'Channel / WiFi:' if current_lang == 'id' else 'Channel / WiFi:' }}</span>
+  <select id="liveWifiBandChannelSelect" class="monits-input" onchange="window.onWifiBandChannelFilterChange(this.value)" aria-label="Channel / WiFi">
+    <option value="">{{ 'Semua Band & Channel' if current_lang == 'id' else 'All Bands & Channels' }}</option>
+    <option value="band:2.4GHz">2.4 GHz</option>
+    <option value="band:5GHz">5 GHz</option>
+    <option value="band:6GHz">6 GHz</option>
+  </select>
+  <button type="button" class="monits-pill-btn on" style="padding:3px 9px; font-size:0.72rem;" onclick="window.toggleMonitsDrawer('wifi')">
+    + {{ 'Survei RSSI' if current_lang == 'id' else 'Survey RSSI' }}
+  </button>
+</div>
+
+<!-- Drawer 3: Wi-Fi Survey RSSI & AP Heatmap Manager (Phase 4) -->
+<aside id="drawerWifiSurvey" class="monits-drawer" aria-label="Wi-Fi RSSI Survey Manager">
+  <div class="monits-drawer-header">
+    <div class="monits-drawer-title">
+      <span>📶</span>
+      <span>{{ 'Survei Wi-Fi RSSI & Peta Panas AP' if current_lang == 'id' else 'Wi-Fi RSSI Survey & AP Heatmap' }}</span>
+    </div>
+    <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
+  </div>
+  <div class="monits-drawer-body">
+    <!-- Section 1: Select Wi-Fi AP / SSID & Band/Channel Filter (2D + 3D shared) -->
+    <div class="monits-subcard">
+      <h4 class="monits-section-title" style="margin-top:0;">
+        {{ '1. Filter Wi-Fi AP & Band / Channel (2D & 3D)' if current_lang == 'id' else '1. Filter Wi-Fi AP & Band / Channel (2D & 3D)' }}
+      </h4>
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <div style="display:flex; gap:6px; align-items:center;">
+          <select id="wifiSurveyFilterSsid" class="monits-input" style="flex:1;" onchange="window.onWifiSsidFilterChange(this.value)">
+            <option value="">{{ 'Semua Wi-Fi AP (Terkuat)' if current_lang == 'id' else 'All Wi-Fi APs (Best Signal)' }}</option>
+          </select>
+          <button type="button" class="monits-pill-btn on" style="white-space:nowrap; padding:6px 10px;" onclick="window.activateWifiHeatmapIn3D()">
+            🗺️ {{ 'Lihat 3D' if current_lang == 'id' else 'Show 3D' }}
+          </button>
+        </div>
+        <select id="wifiSurveyFilterBandChannel" class="monits-input" onchange="window.onWifiBandChannelFilterChange(this.value)">
+          <option value="">{{ 'Semua Band & Channel' if current_lang == 'id' else 'All Bands & Channels' }}</option>
+          <option value="band:2.4GHz">2.4 GHz</option>
+          <option value="band:5GHz">5 GHz</option>
+          <option value="band:6GHz">6 GHz</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Section 2: Add New Wi-Fi RSSI Survey Point -->
+    <div class="monits-subcard">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <h4 class="monits-section-title" style="margin:0;">
+          {{ '2. Tambah Titik Pengukuran RSSI Wi-Fi' if current_lang == 'id' else '2. Add Wi-Fi RSSI Measurement Point' }}
+        </h4>
+        <button type="button" id="btnPickWifiPoint" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 8px;" onclick="window.toggleWifiPointPicker()">
+          📍 {{ 'Pilih di Denah' if current_lang == 'id' else 'Pick on Plan' }}
+        </button>
+      </div>
+      <div id="wifiPickHint" style="display:none; font-size:0.68rem; color:var(--accent-cyan); margin-bottom:6px;">
+        {{ 'Klik pada denah untuk mengisi koordinat (X, Z) titik survei...' if current_lang == 'id' else 'Click on the floor plan canvas to fill (X, Z) survey coordinates...' }}
+      </div>
+      <div class="monits-form-grid">
+        <label style="grid-column: span 2;">
+          <span>{{ 'Nama Wi-Fi / AP (SSID)' if current_lang == 'id' else 'Wi-Fi / AP Name (SSID)' }}</span>
+          <input id="newWifiSsid" type="text" list="wifiSsidDatalist" placeholder="e.g. DC-ServerRoom-5G" class="monits-input" />
+          <datalist id="wifiSsidDatalist"></datalist>
+        </label>
+        <label>
+          <span>{{ 'Kekuatan Sinyal (dBm)' if current_lang == 'id' else 'Signal Strength (dBm)' }}</span>
+          <input id="newWifiRssi" type="number" step="1" min="-110" max="-10" value="-48" class="monits-input" />
+        </label>
+        <label>
+          <span>{{ 'Pita / Band & Channel' if current_lang == 'id' else 'Band & Channel' }}</span>
+          <div style="display:flex; gap:4px;">
+            <select id="newWifiBand" class="monits-input" style="flex:1;" onchange="window.onNewWifiBandChange(this.value)">
+              <option value="5GHz">5 GHz</option>
+              <option value="2.4GHz">2.4 GHz</option>
+              <option value="6GHz">6 GHz</option>
+            </select>
+            <input id="newWifiChannel" type="number" min="1" max="233" value="36" class="monits-input" style="width:58px;" title="Wi-Fi Channel" placeholder="Ch" />
+          </div>
+        </label>
+        <label>
+          <span>{{ 'Lantai' if current_lang == 'id' else 'Floor Level' }}</span>
+          <select id="newWifiFloor" class="monits-input"></select>
+        </label>
+        <label>
+          <span>{{ 'Posisi X & Z (meter)' if current_lang == 'id' else 'Position X & Z (meters)' }}</span>
+          <div style="display:flex; gap:4px;">
+            <input id="newWifiX" type="number" step="0.1" value="2.5" class="monits-input" placeholder="X" />
+            <input id="newWifiZ" type="number" step="0.1" value="1.5" class="monits-input" placeholder="Z" />
+          </div>
+        </label>
+      </div>
+      <button type="button" id="btnAddWifiRssi" class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:7px;" onclick="window.handleAddWifiSurveyPoint()">
+        ➕ {{ 'Simpan Titik RSSI & Perbarui Peta Panas' if current_lang == 'id' else 'Save RSSI Point & Update 3D Heatmap' }}
+      </button>
+      <div id="wifiSurveyStatusMsg" style="font-size:0.74rem; color:var(--accent-green); margin-top:6px;"></div>
+    </div>
+
+    <!-- Section 3: Measured Wi-Fi RSSI Points (CRUD + Band + Export/Import) -->
+    <div>
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
+        <h4 class="monits-section-title" style="margin:0; border:none; padding:0;">
+          {{ '3. Daftar Titik Survei RSSI (Edit / Hapus)' if current_lang == 'id' else '3. Measured RSSI Points (Edit / Delete)' }}
+        </h4>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <a href="/api/v1/wifi-survey/export?format=json" download="wifi_survey.json" class="monits-pill-btn" style="font-size:0.65rem; padding:2px 7px; text-decoration:none;">⬇ JSON</a>
+          <a href="/api/v1/wifi-survey/export?format=csv" download="wifi_survey.csv" class="monits-pill-btn" style="font-size:0.65rem; padding:2px 7px; text-decoration:none;">⬇ CSV</a>
+          <button type="button" class="monits-pill-btn" style="font-size:0.65rem; padding:2px 7px;" onclick="document.getElementById('wifiImportFile').click()">⬆ Import</button>
+          <input type="file" id="wifiImportFile" accept=".json,.csv" style="display:none;" onchange="window.handleImportWifiFile(this)" />
+        </div>
+      </div>
+      <div id="wifiSurveyPointsList"></div>
+    </div>
+  </div>
+</aside>
+
 <script type="module">
-  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261119q";
+  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261122b";
 
   const currentLang = "{{ current_lang|default('en') }}";
   const isId = currentLang === "id";
+  let lastStyledTheme = "";
 
-  // Ensure 3D panel fills 100% of the viewport while keeping NeonPlan 3D v3.5.1 .fp3d-header visible
-  function styleIntegratedPanel() {
+  function buildThemeVarsCss(isLight) {
+    if (isLight) {
+      return `
+        :host {
+          color-scheme: light !important;
+          --fp3d-bg: #f1f5f9 !important;
+          --fp3d-bg2: #e2e8f0 !important;
+          --fp3d-chrome: rgba(255, 255, 255, 0.94) !important;
+          --fp3d-chrome-solid: #ffffff !important;
+          --fp3d-panel: rgba(255, 255, 255, 0.94) !important;
+          --fp3d-soft: rgba(15, 23, 42, 0.05) !important;
+          --fp3d-line: rgba(15, 23, 42, 0.14) !important;
+          --fp3d-border: rgba(15, 23, 42, 0.16) !important;
+          --fp3d-text: #0f172a !important;
+          --fp3d-muted: #475569 !important;
+          --fp3d-accent: #0284c7 !important;
+          --fp3d-accent-text: #ffffff !important;
+          --fp3d-warm: #d97706 !important;
+          --fp3d-danger: #dc2626 !important;
+          --fp3d-shadow: 0 8px 24px rgba(15, 23, 42, 0.12) !important;
+          --fp3d-field-hover: rgba(2, 132, 199, 0.1) !important;
+        }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #e2e8f0; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 999px; }
+      `;
+    }
+    return `
+      :host {
+        color-scheme: dark !important;
+        --fp3d-bg: #070b14 !important;
+        --fp3d-bg2: #0d1322 !important;
+        --fp3d-chrome: rgba(14, 21, 38, 0.96) !important;
+        --fp3d-chrome-solid: #0e1526 !important;
+        --fp3d-panel: rgba(13, 19, 34, 0.94) !important;
+        --fp3d-soft: rgba(255, 255, 255, 0.06) !important;
+        --fp3d-line: rgba(0, 240, 255, 0.22) !important;
+        --fp3d-border: rgba(0, 240, 255, 0.22) !important;
+        --fp3d-text: #e2e8f0 !important;
+        --fp3d-muted: #94a3b8 !important;
+        --fp3d-accent: #00f0ff !important;
+        --fp3d-accent-text: #05101c !important;
+        --fp3d-warm: #fbbf24 !important;
+        --fp3d-danger: #f87171 !important;
+        --fp3d-shadow: 0 12px 32px rgba(0, 0, 0, 0.6) !important;
+        --fp3d-field-hover: rgba(0, 240, 255, 0.12) !important;
+      }
+      ::-webkit-scrollbar { width: 8px; height: 8px; }
+      ::-webkit-scrollbar-track { background: #070b14; }
+      ::-webkit-scrollbar-thumb { background: rgba(0, 240, 255, 0.3); border-radius: 999px; }
+    `;
+  }
+
+  function applyShadowThemeVars(root, isLight) {
+    if (!root) return;
+    let st = root.getElementById("monits-theme-vars");
+    if (!st) {
+      st = document.createElement("style");
+      st.id = "monits-theme-vars";
+      root.appendChild(st);
+    }
+    const desired = buildThemeVarsCss(isLight);
+    if (st.textContent !== desired) st.textContent = desired;
+  }
+
+  // Ensure 3D panel fills 100% of the viewport while keeping NeonPlan 3D header & theme unified
+  function styleIntegratedPanel(forceTheme = false) {
     const panel = document.getElementById("monitPanel");
-    if (panel && panel.shadowRoot) {
-      if (!panel.shadowRoot.getElementById("monits-integrated-layout")) {
-        const style = document.createElement("style");
-        style.id = "monits-integrated-layout";
-        style.textContent = `
-          :host {
-            height: 100vh !important;
-            max-height: 100vh !important;
-            display: flex !important;
-            flex-direction: column !important;
-          }
-          .fp3d-app {
-            height: 100vh !important;
-            display: flex !important;
-            flex-direction: column !important;
-          }
+    if (!panel || !panel.shadowRoot) return;
+    const isLight = (document.documentElement.dataset.theme || "neon") === "light";
+
+    if (!panel.shadowRoot.getElementById("monits-integrated-layout")) {
+      const style = document.createElement("style");
+      style.id = "monits-integrated-layout";
+      style.textContent = `
+        :host {
+          height: 100vh !important;
+          max-height: 100vh !important;
+          display: flex !important;
+          flex-direction: column !important;
+        }
+        .fp3d-app {
+          height: 100vh !important;
+          display: flex !important;
+          flex-direction: column !important;
+          background: var(--fp3d-bg) !important;
+          color: var(--fp3d-text) !important;
+        }
+        .fp3d-header {
+          display: flex !important;
+          align-items: center !important;
+          gap: 6px !important;
+          padding: 6px 12px !important;
+          min-height: 48px !important;
+          flex-wrap: wrap !important;
+          background: var(--fp3d-chrome) !important;
+          border-bottom: 1px solid var(--fp3d-line) !important;
+          color: var(--fp3d-text) !important;
+        }
+        .fp3d-header > h1 {
+          font-size: 16px !important;
+          margin: 0 4px 0 4px !important;
+          white-space: nowrap !important;
+        }
+        .fp3d-header > .fp3d-seg,
+        .fp3d-header > fp3d-plan-picker,
+        .fp3d-header > .fp3d-opts-btn {
+          flex-shrink: 0 !important;
+          white-space: nowrap !important;
+        }
+        .fp3d-header > .fp3d-opts-btn {
+          order: 3 !important;
+        }
+        .fp3d-header > .fp3d-seg:last-of-type {
+          order: 4 !important;
+        }
+        .fp3d-header > .fp3d-view-opts.fp3d-opts-open {
+          order: 5 !important;
+          width: 100% !important;
+          padding-top: 6px !important;
+          border-top: 1px solid var(--fp3d-line) !important;
+        }
+        @media (max-width: 960px) {
           .fp3d-header {
-            display: flex !important;
-            align-items: center !important;
             gap: 6px !important;
-            padding: 6px 12px !important;
-            min-height: 48px !important;
-            flex-wrap: wrap !important;
-            background: rgba(14, 21, 38, 0.96) !important;
-            border-bottom: 1px solid rgba(0, 240, 255, 0.25) !important;
+            padding: 6px 10px !important;
           }
+          .fp3d-header > .fp3d-grow {
+            display: none !important;
+          }
+        }
+        @media (max-width: 640px) {
           .fp3d-header > h1 {
-            font-size: 16px !important;
-            margin: 0 4px 0 4px !important;
-            white-space: nowrap !important;
+            font-size: 14px !important;
           }
-          .fp3d-header > .fp3d-seg,
-          .fp3d-header > fp3d-plan-picker,
-          .fp3d-header > .fp3d-opts-btn {
-            flex-shrink: 0 !important;
-            white-space: nowrap !important;
+          .fp3d-header .fp3d-seg button,
+          .fp3d-header .fp3d-opts-btn {
+            padding: 5px 8px !important;
+            font-size: 12px !important;
           }
-          .fp3d-header > .fp3d-opts-btn {
-            order: 3 !important;
-          }
-          .fp3d-header > .fp3d-seg:last-of-type {
-            order: 4 !important;
-          }
-          .fp3d-header > .fp3d-view-opts.fp3d-opts-open {
-            order: 5 !important;
-            width: 100% !important;
-            padding-top: 6px !important;
-            border-top: 1px solid rgba(0, 240, 255, 0.14) !important;
-          }
-          @media (max-width: 960px) {
-            .fp3d-header {
-              gap: 6px !important;
-              padding: 6px 10px !important;
-            }
-            .fp3d-header > .fp3d-grow {
-              display: none !important;
-            }
-          }
-          @media (max-width: 640px) {
-            .fp3d-header > h1 {
-              font-size: 14px !important;
-            }
-            .fp3d-header .fp3d-seg button,
-            .fp3d-header .fp3d-opts-btn {
-              padding: 5px 8px !important;
-              font-size: 12px !important;
-            }
-          }
-          .fp3d-stage-wrap {
-            flex: 1 !important;
-            min-height: 0 !important;
-            height: 100% !important;
-          }
-        `;
-        panel.shadowRoot.appendChild(style);
+        }
+        .fp3d-stage-wrap {
+          flex: 1 !important;
+          min-height: 0 !important;
+          height: 100% !important;
+        }
+      `;
+      panel.shadowRoot.appendChild(style);
+    }
+
+    const v3d = panel.shadowRoot.querySelector("fp3d-view3d, nf-view3d");
+    const ed = panel.shadowRoot.querySelector("fp3d-editor, nf-editor");
+    applyShadowThemeVars(panel.shadowRoot, isLight);
+    if (v3d?.shadowRoot) applyShadowThemeVars(v3d.shadowRoot, isLight);
+    if (ed?.shadowRoot) {
+      applyShadowThemeVars(ed.shadowRoot, isLight);
+      let edStyle = ed.shadowRoot.getElementById("monits-editor-theme-extra");
+      if (!edStyle) {
+        edStyle = document.createElement("style");
+        edStyle.id = "monits-editor-theme-extra";
+        ed.shadowRoot.appendChild(edStyle);
+      }
+      const edCss = isLight
+        ? `.fp3d-canvas, .fp3d-plan-wrap { background: #f8fafc !important; } .fp3d-plan { background: #f8fafc !important; }`
+        : `.fp3d-canvas, .fp3d-plan-wrap { background: #070b14 !important; }`;
+      if (edStyle.textContent !== edCss) edStyle.textContent = edCss;
+    }
+
+    const themeKey = isLight ? "light" : "neon";
+    if (forceTheme || lastStyledTheme !== themeKey) {
+      lastStyledTheme = themeKey;
+      const desired3d = isLight ? "day" : "neon";
+      if (panel._theme !== desired3d && (panel._theme === "neon" || panel._theme === "day" || !panel._theme)) {
+        panel._theme = desired3d;
+        panel.requestUpdate?.();
+      }
+      if (v3d && v3d.theme !== desired3d && (v3d.theme === "neon" || v3d.theme === "day" || !v3d.theme)) {
+        v3d.theme = desired3d;
+        v3d.requestUpdate?.();
       }
     }
   }
+
+  window.addEventListener("monits-theme-changed", () => {
+    styleIntegratedPanel(true);
+  });
 
   window.saveCurrentBuildingNow = async function() {
     if (!window.monitsApi) return false;
@@ -578,19 +890,29 @@
   window.toggleMonitsDrawer = function(which) {
     const dev = document.getElementById("drawerDevices");
     const cab = document.getElementById("drawerCables");
+    const wifi = document.getElementById("drawerWifiSurvey");
     if (which === "devices") {
       const opening = !dev.classList.contains("open");
       dev.classList.toggle("open", opening);
       cab.classList.remove("open");
+      wifi?.classList.remove("open");
       if (opening) renderDevicesDrawer();
     } else if (which === "cables") {
       const opening = !cab.classList.contains("open");
       cab.classList.toggle("open", opening);
       dev.classList.remove("open");
+      wifi?.classList.remove("open");
       if (opening) renderCablesDrawer();
+    } else if (which === "wifi") {
+      const opening = !wifi.classList.contains("open");
+      wifi.classList.toggle("open", opening);
+      dev.classList.remove("open");
+      cab.classList.remove("open");
+      if (opening) renderWifiSurveyDrawer();
     } else {
       dev.classList.remove("open");
       cab.classList.remove("open");
+      wifi?.classList.remove("open");
     }
   };
 
@@ -848,12 +1170,12 @@
         ).join("");
         const hasSql = Boolean(s.data_source_id && s.sql_query);
         return `
-          <div style="background: rgba(10, 17, 34, 0.72); border: 1px solid rgba(0, 240, 255, 0.16); border-radius: 8px; padding: 8px; margin-bottom: 8px;">
+          <div class="monits-subcard" style="padding: 8px; margin-bottom: 8px;">
             <div class="monits-sensor-grid" style="grid-template-columns: ${cols}; align-items:end; margin:0; padding:0; border:none; background:none;">
               <div style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap; cursor:pointer;" title="${s.name} · ${typeLabels[sType] || sType}" onclick="window.onFocusSensorCard('${s.identifier}')">
-                <strong style="color:#e2e8f0;">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
-                <div style="font-size:0.66rem; color:#38bdf8;">${s.area_id}${coordsLabel}${hasSql ? ' · <span style="color:#4ade80;">SQL</span>' : ''}</div>
-                <div style="font-size:0.62rem; color:#94a3b8;">${typeLabels[sType] || sType}</div>
+                <strong style="color:var(--text-main);">${s.name.replace("Thermohygrograph", "").replace("Sensor", "").trim()}</strong>
+                <div style="font-size:0.66rem; color:var(--accent-cyan);">${s.area_id}${coordsLabel}${hasSql ? ' · <span style="color:var(--accent-green);">SQL</span>' : ''}</div>
+                <div style="font-size:0.62rem; color:var(--text-muted);">${typeLabels[sType] || sType}</div>
               </div>
               ${fieldsHtml}
               <button class="monits-pill-btn" title="Show 3D Gauge & 24h Chart" onclick="window.onFocusSensorCard('${s.identifier}')">
@@ -862,12 +1184,12 @@
               <button class="monits-pill-btn on" title="Save & Sync Sensor" onclick="window.onSaveDbSensor('${s.identifier}', '${s.area_id}')">
                 💾
               </button>
-              <button class="monits-pill-btn" style="color:#f87171; border-color:rgba(248,113,113,0.35);" title="Delete Sensor from DB & 3D" onclick="window.onDeleteDbSensor('${s.identifier}', '${(s.name || s.identifier).replace(/'/g, "\\'")}')">
+              <button class="monits-pill-btn danger" title="Delete Sensor from DB & 3D" onclick="window.onDeleteDbSensor('${s.identifier}', '${(s.name || s.identifier).replace(/'/g, "\\'")}')">
                 🗑️
               </button>
             </div>
             <details style="margin-top:6px; font-size:0.7rem;" ${hasSql ? 'open' : ''}>
-              <summary style="cursor:pointer; color:#94a3b8; user-select:none;">✏️ Rename / Type / Data Source / SQL</summary>
+              <summary style="cursor:pointer; color:var(--text-muted); user-select:none;">✏️ Rename / Type / Data Source / SQL</summary>
               <div style="margin-top:6px;">
                 <input id="inp_name_${s.identifier}" type="text" class="monits-input" value="${(s.name || s.identifier).replace(/"/g, "&quot;")}" placeholder="Sensor Name" style="width:100%; font-size:0.72rem;" />
               </div>
@@ -877,7 +1199,7 @@
               </div>
               <textarea id="inp_sql_${s.identifier}" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature, Humidity FROM ..." style="margin-top:6px; width:100%; font-family:monospace; font-size:0.68rem;">${(s.sql_query || "").replace(/</g, "&lt;")}</textarea>
               <textarea id="inp_sql_hum_${s.identifier}" rows="2" class="monits-input" placeholder="Optional Humidity Query #2: SELECT Date_Time AS &quot;time&quot;, Humidity FROM ..." style="margin-top:4px; width:100%; font-family:monospace; font-size:0.68rem;">${(s.sql_query_humidity || "").replace(/</g, "&lt;")}</textarea>
-              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:6px; font-size:0.68rem; color:#cbd5e1;">
+              <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:6px; font-size:0.68rem; color:var(--text-main);">
                 <label style="display:inline-flex; align-items:center; gap:4px; cursor:pointer; flex-direction:row;">
                   <input id="inp_glink_${s.identifier}" type="checkbox" ${s.grafana_link_enabled ? "checked" : ""} />
                   <span>Linked URL</span>
@@ -888,7 +1210,7 @@
                 </label>
               </div>
               <input id="inp_gurl_${s.identifier}" type="url" class="monits-input" placeholder="Grafana Target URL (http://...)" value="${(s.grafana_url || "").replace(/"/g, "&quot;")}" style="margin-top:4px; width:100%; font-size:0.68rem;" />
-              <div id="inp_sql_msg_${s.identifier}" style="font-size:0.68rem; margin-top:4px; color:#94a3b8;"></div>
+              <div id="inp_sql_msg_${s.identifier}" style="font-size:0.68rem; margin-top:4px; color:var(--text-muted);"></div>
             </details>
           </div>
         `;
@@ -1021,6 +1343,255 @@
 
   let cableWaypoints = [];
   let cablePickActive = false;
+  let wifiPickActive = false;
+
+  function formatBandBadge(band, channel) {
+    const b = String(band || "N/A").trim();
+    const low = b.toLowerCase();
+    let shortLbl = "N/A";
+    let cls = "band-na";
+    if (low.includes("2.4") || low === "2g") { shortLbl = "2.4G"; cls = "band-24"; }
+    else if (low.includes("5")) { shortLbl = "5G"; cls = "band-5"; }
+    else if (low.includes("6")) { shortLbl = "6G"; cls = "band-6"; }
+    const chTxt = (channel !== null && channel !== undefined && channel !== "") ? ` ch${channel}` : "";
+    return `<span class="wifi-band-badge ${cls}" title="Band ${b}${chTxt}">${shortLbl}${chTxt}</span>`;
+  }
+
+  window.onNewWifiBandChange = function(band) {
+    const chEl = document.getElementById("newWifiChannel");
+    if (!chEl) return;
+    if (band === "2.4GHz") chEl.value = 6;
+    else if (band === "6GHz") chEl.value = 37;
+    else chEl.value = 36;
+  };
+
+  function syncWifiSsidDropdowns() {
+    if (!window.monitsApi) return;
+    const apOptions = window.monitsApi.getWifiApOptions?.() || [];
+    const ssids = apOptions.map(a => a.ssid);
+    const cur = window.monitsApi.getSelectedWifiSsid?.() || "";
+    const allLabel = isId ? "Semua Wi-Fi AP (Terkuat)" : "All Wi-Fi APs (Best Signal)";
+    const opts = `<option value="">${allLabel}</option>` +
+      apOptions.map(ap => {
+        const val = String(ap.ssid).replace(/"/g, "&quot;");
+        const lbl = String(ap.label || ap.ssid).replace(/</g, "&lt;");
+        return `<option value="${val}" ${ap.ssid === cur ? "selected" : ""}>📶 ${lbl}</option>`;
+      }).join("");
+    for (const id of ["liveWifiSsidSelect", "wifiSurveyFilterSsid"]) {
+      const el = document.getElementById(id);
+      if (el && el.innerHTML !== opts) {
+        el.innerHTML = opts;
+        el.value = cur;
+      }
+    }
+    const dl = document.getElementById("wifiSsidDatalist");
+    if (dl) {
+      dl.innerHTML = ssids.map(s => `<option value="${String(s).replace(/"/g, "&quot;")}"></option>`).join("");
+    }
+    syncWifiBandChannelDropdowns();
+  }
+
+  function syncWifiBandChannelDropdowns() {
+    if (!window.monitsApi) return;
+    const raw = window.monitsApi.getWifiBandChannelOptions?.() || { bands: ["2.4GHz", "5GHz", "6GHz"], channels: [] };
+    const bands = Array.isArray(raw.bands) ? raw.bands : ["2.4GHz", "5GHz", "6GHz"];
+    const channels = Array.isArray(raw.channels) ? raw.channels : [];
+    const curVal = window.monitsApi.getSelectedWifiBandChannel?.() || "";
+    const allLbl = isId ? "Semua Band & Channel" : "All Bands & Channels";
+    const items = [{ value: "", label: allLbl }];
+    for (const b of bands) {
+      items.push({ value: `band:${b}`, label: `${b.replace("GHz", " GHz")} (${isId ? "Semua ch" : "All ch"})` });
+    }
+    for (const ch of channels) {
+      items.push({ value: `ch:${ch}`, label: `Channel ${ch}` });
+    }
+    const optsHtml = items.map(o =>
+      `<option value="${String(o.value).replace(/"/g, "&quot;")}" ${o.value === curVal ? "selected" : ""}>${String(o.label).replace(/</g, "&lt;")}</option>`
+    ).join("");
+    for (const id of ["liveWifiBandChannelSelect", "wifiSurveyFilterBandChannel"]) {
+      const el = document.getElementById(id);
+      if (el && el.innerHTML !== optsHtml) {
+        el.innerHTML = optsHtml;
+        el.value = curVal;
+      }
+    }
+  }
+
+  function updateWifiSsidFloatingBar() {
+    const bar = document.getElementById("wifiSsidBar");
+    if (!bar) return;
+    const panel = document.getElementById("monitPanel");
+    const v3d = panel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
+    const wifiDrawerOpen = document.getElementById("drawerWifiSurvey")?.classList.contains("open");
+    const isWifiHeat = (panel?._mode === "view" && v3d?.heatMode === "wifi")
+      || (panel?._mode === "editor" && (wifiDrawerOpen || (window.monitsApi?.getWifiSurveyPoints?.()?.length || 0) > 0));
+    bar.style.display = isWifiHeat ? "flex" : "none";
+    if (isWifiHeat) syncWifiSsidDropdowns();
+  }
+
+  window.onWifiSsidFilterChange = function(ssid) {
+    if (!window.monitsApi) return;
+    window.monitsApi.setSelectedWifiSsid(ssid || "");
+    syncWifiSsidDropdowns();
+    renderWifiSurveyDrawer();
+  };
+
+  window.onWifiBandChannelFilterChange = function(val) {
+    if (!window.monitsApi) return;
+    window.monitsApi.setWifiBandChannelFilter(val || "");
+    syncWifiBandChannelDropdowns();
+    renderWifiSurveyDrawer();
+  };
+
+  window.activateWifiHeatmapIn3D = async function() {
+    await window.switchUIMode("view");
+    setTimeout(() => {
+      const v3d = document.getElementById("monitPanel")?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
+      if (v3d) {
+        v3d.heatMode = "wifi";
+        v3d.applyTint?.();
+        v3d.requestUpdate?.();
+      }
+      updateWifiSsidFloatingBar();
+    }, 250);
+  };
+
+  window.toggleWifiPointPicker = function() {
+    wifiPickActive = !wifiPickActive;
+    if (wifiPickActive && cablePickActive) window.toggleCablePointPicker();
+    const btn = document.getElementById("btnPickWifiPoint");
+    const hint = document.getElementById("wifiPickHint");
+    if (btn) btn.classList.toggle("on", wifiPickActive);
+    if (hint) hint.style.display = wifiPickActive ? "block" : "none";
+  };
+
+  function renderWifiSurveyDrawer() {
+    if (!window.monitsApi) return;
+    syncWifiSsidDropdowns();
+    const b = window.monitsApi.getBuilding();
+    const floorSel = document.getElementById("newWifiFloor");
+    if (floorSel && b && Array.isArray(b.floors)) {
+      const prev = floorSel.value;
+      floorSel.innerHTML = b.floors.map(f => `<option value="${f.id}">${f.name || f.id}</option>`).join("");
+      if (prev && b.floors.some(f => f.id === prev)) floorSel.value = prev;
+    }
+    const listEl = document.getElementById("wifiSurveyPointsList");
+    const pts = window.monitsApi.getFilteredWifiPoints?.(null) || window.monitsApi.getWifiSurveyPoints?.() || [];
+    const selObj = window.monitsApi.getSelectedObject?.();
+    if (listEl) {
+      if (pts.length === 0) {
+        listEl.innerHTML = `<div style="font-size:0.74rem; color:var(--text-muted);">${isId ? "Belum ada titik survei RSSI yang cocok dengan filter." : "No RSSI survey points match the current filter."}</div>`;
+      } else {
+        listEl.innerHTML = pts.map(p => {
+          const safeId = p.id.replace(/[^a-zA-Z0-9_]/g, "_");
+          const sigColor = p.rssi_dbm >= -55 ? "var(--accent-green)" : (p.rssi_dbm >= -70 ? "var(--accent-amber)" : "var(--accent-red)");
+          const bandVal = p.band || "5GHz";
+          const chVal = p.channel ?? "";
+          const isSelected = selObj && selObj.type === "wifi_point" && selObj.id === p.id;
+          return `
+            <div class="monits-card-row" data-wifi-point-id="${p.id}" style="flex-direction:column; align-items:stretch; gap:5px; ${isSelected ? 'border-color:var(--accent-cyan); box-shadow:0 0 0 1px var(--accent-cyan);' : ''}">
+              <div style="display:flex; gap:4px; align-items:center; flex-wrap:nowrap;">
+                <input id="inp_wssid_${safeId}" type="text" class="monits-input" value="${String(p.ssid).replace(/"/g, "&quot;")}" style="flex:1; min-width:85px; font-size:0.72rem; padding:3px 6px;" title="Wi-Fi AP / SSID" />
+                <input id="inp_wrssi_${safeId}" type="number" step="1" class="monits-input" value="${p.rssi_dbm}" style="width:54px; font-size:0.72rem; padding:3px 4px; color:${sigColor}; font-weight:700;" title="RSSI (dBm)" />
+                ${formatBandBadge(bandVal, chVal)}
+                <button class="monits-pill-btn on" style="padding:3px 6px;" title="Save" onclick="window.onSaveWifiSurveyPoint('${p.id}', '${safeId}')">💾</button>
+                <button class="monits-pill-btn danger" style="padding:3px 6px;" title="Delete" onclick="window.onDeleteWifiSurveyPoint('${p.id}')">🗑️</button>
+              </div>
+              <div style="display:flex; gap:5px; align-items:center; font-size:0.68rem; color:var(--text-muted);">
+                <select id="inp_wband_${safeId}" class="monits-input" style="width:86px; font-size:0.68rem; padding:2px 4px;" title="Wi-Fi Band">
+                  <option value="2.4GHz" ${bandVal === "2.4GHz" ? "selected" : ""}>2.4 GHz</option>
+                  <option value="5GHz" ${bandVal === "5GHz" ? "selected" : ""}>5 GHz</option>
+                  <option value="6GHz" ${bandVal === "6GHz" ? "selected" : ""}>6 GHz</option>
+                  <option value="N/A" ${bandVal === "N/A" ? "selected" : ""}>N/A</option>
+                </select>
+                <input id="inp_wch_${safeId}" type="number" min="1" max="233" class="monits-input" value="${chVal}" placeholder="Ch" style="width:52px; font-size:0.68rem; padding:2px 4px;" title="Channel" />
+                <span>X:</span>
+                <input id="inp_wx_${safeId}" type="number" step="0.1" class="monits-input" value="${p.x}" style="width:50px; font-size:0.68rem; padding:2px 4px;" title="X (m)" />
+                <span>Z:</span>
+                <input id="inp_wz_${safeId}" type="number" step="0.1" class="monits-input" value="${p.z}" style="width:50px; font-size:0.68rem; padding:2px 4px;" title="Z (m)" />
+              </div>
+            </div>
+          `;
+        }).join("");
+      }
+    }
+  }
+
+  window.handleAddWifiSurveyPoint = async function() {
+    if (!window.monitsApi) return;
+    const ssid = document.getElementById("newWifiSsid")?.value?.trim();
+    const rssi_dbm = document.getElementById("newWifiRssi")?.value;
+    const band = document.getElementById("newWifiBand")?.value || "5GHz";
+    const channelRaw = document.getElementById("newWifiChannel")?.value;
+    const channel = channelRaw ? Number(channelRaw) : null;
+    const floor_id = document.getElementById("newWifiFloor")?.value || "ground";
+    const x = document.getElementById("newWifiX")?.value || 2.5;
+    const z = document.getElementById("newWifiZ")?.value || 1.5;
+    const msgEl = document.getElementById("wifiSurveyStatusMsg");
+    if (!ssid) {
+      if (msgEl) { msgEl.style.color = "var(--accent-red)"; msgEl.textContent = isId ? "⚠ Masukkan nama Wi-Fi / AP (SSID)." : "⚠ Please enter a Wi-Fi / AP Name (SSID)."; }
+      return;
+    }
+    const added = await window.monitsApi.addWifiSurveyPoint({ ssid, rssi_dbm, band, channel, floor_id, x, z });
+    if (added && msgEl) {
+      if (wifiPickActive) window.toggleWifiPointPicker();
+      msgEl.style.color = "var(--accent-green)";
+      msgEl.textContent = `✓ Saved ${added.ssid} (${added.band}${added.channel ? ' ch' + added.channel : ''}): ${added.rssi_dbm} dBm @ (${added.x}m, ${added.z}m)`;
+      renderWifiSurveyDrawer();
+    }
+  };
+
+  window.onSaveWifiSurveyPoint = async function(pointId, safeId) {
+    if (!window.monitsApi) return;
+    const ssid = document.getElementById(`inp_wssid_${safeId}`)?.value?.trim();
+    const rssi_dbm = document.getElementById(`inp_wrssi_${safeId}`)?.value;
+    const band = document.getElementById(`inp_wband_${safeId}`)?.value || "5GHz";
+    const chRaw = document.getElementById(`inp_wch_${safeId}`)?.value;
+    const channel = chRaw ? Number(chRaw) : null;
+    const x = document.getElementById(`inp_wx_${safeId}`)?.value;
+    const z = document.getElementById(`inp_wz_${safeId}`)?.value;
+    await window.monitsApi.updateWifiSurveyPoint(pointId, { ssid, rssi_dbm, band, channel, x, z });
+    renderWifiSurveyDrawer();
+  };
+
+  window.onDeleteWifiSurveyPoint = async function(pointId) {
+    if (!window.monitsApi) return;
+    await window.monitsApi.deleteWifiSurveyPoint(pointId);
+    renderWifiSurveyDrawer();
+  };
+
+  window.handleImportWifiFile = async function(input) {
+    const file = input?.files?.[0];
+    if (!file || !window.monitsApi) return;
+    const text = await file.text();
+    const format = file.name.toLowerCase().endsWith(".csv") ? "csv" : "json";
+    const res = await window.monitsApi.importWifiSurvey(format, text, false);
+    const msgEl = document.getElementById("wifiSurveyStatusMsg");
+    if (msgEl) {
+      if (res) {
+        msgEl.style.color = "var(--accent-green)";
+        msgEl.textContent = `✓ Imported ${res.imported} Wi-Fi RSSI points (${res.total} total).`;
+      } else {
+        msgEl.style.color = "var(--accent-red)";
+        msgEl.textContent = "⚠ Failed to import Wi-Fi survey file.";
+      }
+    }
+    input.value = "";
+    renderWifiSurveyDrawer();
+  };
+
+  window.addEventListener("monits-wifi-survey-changed", () => {
+    syncWifiSsidDropdowns();
+    if (document.getElementById("drawerWifiSurvey")?.classList.contains("open")) {
+      renderWifiSurveyDrawer();
+    }
+  });
+
+  window.addEventListener("monits-selection-changed", () => {
+    if (document.getElementById("drawerWifiSurvey")?.classList.contains("open")) {
+      renderWifiSurveyDrawer();
+    }
+  });
 
   function renderCableWaypoints() {
     const wrap = document.getElementById("cableWaypointsList");
@@ -1068,7 +1639,7 @@
   };
 
   document.addEventListener("pointerdown", (ev) => {
-    if (!cablePickActive) return;
+    if (!cablePickActive && !wifiPickActive) return;
     if (ev.target.closest && ev.target.closest(".monits-drawer")) return;
     // Map click relative to active floor bounding box on the viewport canvas
     const panel = document.getElementById("monitPanel");
@@ -1088,7 +1659,14 @@
     const rz = Math.max(0, Math.min(1, (ev.clientY - rect.top) / Math.max(1, rect.height)));
     const wx = Math.round((minX + rx * Math.max(1, maxX - minX)) * 10) / 10;
     const wz = Math.round((minZ + rz * Math.max(1, maxZ - minZ)) * 10) / 10;
-    window.addCableWaypoint(wx, wz);
+    if (cablePickActive) {
+      window.addCableWaypoint(wx, wz);
+    } else if (wifiPickActive) {
+      const xIn = document.getElementById("newWifiX");
+      const zIn = document.getElementById("newWifiZ");
+      if (xIn) xIn.value = wx;
+      if (zIn) zIn.value = wz;
+    }
   }, true);
 
   function renderCablesDrawer() {
@@ -1240,7 +1818,7 @@
 
   async function init() {
     try {
-      await import("/static/neonplan3d/neonplan3d.js?v=20261119j");
+      await import("/static/neonplan3d/neonplan3d.js?v=20261122b");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {
@@ -1254,7 +1832,10 @@
         panel.narrow = window.innerWidth < 870;
         window.nfPanel = panel;
 
-        setInterval(styleIntegratedPanel, 250);
+        setInterval(() => {
+          styleIntegratedPanel();
+          updateWifiSsidFloatingBar();
+        }, 250);
       }
     } catch (err) {
       console.error("Failed to initialize 3D interface:", err);

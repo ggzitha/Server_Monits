@@ -369,20 +369,140 @@ def run_smoke_test():
                 raise RuntimeError(f"Expected virtual light state 'on', got '{light_state}'")
             print("  ✓ Virtual lights toggle ON/OFF in 3D scene & persist to DB.")
 
-            # Verify Time Travel loads real numeric sensor readings (zero 'unavailable'/'unknown')
+            # Verify Time Travel loads real numeric sensor readings AND pill === gauge === chart cursor at 3 distinct timestamps!
+            # Focus server_alpha_env (which has varying 24h history readings) so gauges & chart reflect real changes across timestamps
+            page.evaluate("""() => {
+                window.monitsApi.setActiveSensor('server_alpha_env');
+                window.monitsApi.setExpandedSensor('server_alpha_env');
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                v3d?.syncDevices?.(true);
+                v3d?.requestUpdate?.();
+            }""")
+            page.wait_for_timeout(350)
+            active_ident_live = page.evaluate("() => window.monitsApi.getActiveSensorIdentifier()")
+            live_temp_before = page.evaluate(f"() => window.nfPanel.hass.states['sensor.{active_ident_live}_temp']?.state")
+
             page.evaluate("() => window.nfPanel.toggleTimeTravel()")
             page.wait_for_function("() => window.nfPanel?.tt?.session?.state === 'ready'", timeout=10000)
-            tt_check = page.evaluate("""() => {
-                const states = window.nfPanel.tt.session.hass?.states || {};
-                const sensors = Object.entries(states).filter(([k]) => k.startsWith('sensor.') && (k.endsWith('_temp') || k.endsWith('_humidity')));
-                const bad = sensors.filter(([, v]) => !v || v.state === 'unavailable' || v.state === 'unknown' || !Number.isFinite(Number(v.state)));
-                return { total: sensors.length, bad: bad.map(([k, v]) => [k, v?.state]), sample: sensors.slice(0, 3).map(([k, v]) => [k, v?.state]) };
-            }""")
+
+            tt_samples = []
+            for frac in [0.15, 0.50, 0.85]:
+                page.evaluate(f"""() => {{
+                    const tt = window.nfPanel.tt;
+                    const s = tt.session;
+                    const t0 = s.startMs ?? (Date.now() - 86400000);
+                    const t1 = s.endMs ?? Date.now();
+                    const targetT = Math.round(t0 + (t1 - t0) * {frac});
+                    if (s.replay) {{
+                        s.replay.t = targetT;
+                        s.replay.seek = (s.replay.seek || 0) + 1;
+                    }}
+                    window.nfPanel.requestUpdate();
+                    const v3d = window.nfPanel.shadowRoot.querySelector('fp3d-view3d');
+                    if (v3d) {{
+                        v3d.hass = tt.hass(window.nfPanel.hass);
+                        v3d.replay = {{ ...(s.replay || {{}}), t: targetT, seek: (s.replay?.seek || 0) + 1 }};
+                        v3d.requestUpdate();
+                    }}
+                }}""")
+                page.wait_for_timeout(350)
+                snap = page.evaluate("""() => {
+                    const v3d = window.nfPanel.shadowRoot.querySelector('fp3d-view3d');
+                    const ident = window.monitsApi.getActiveSensorIdentifier();
+                    const pillState = v3d.hass?.states?.['sensor.' + ident + '_temp']?.state;
+                    const card = v3d.shadowRoot.querySelector('.live-card-env-full');
+                    const ringText = card?.querySelector('[title="Temperature Gauge"] b')?.textContent?.trim() || '';
+                    const hasTtCursor = !!card?.querySelector('.live-chart-tt-cursor');
+                    const ttBadge = card?.querySelector('.live-card-tt-badge')?.textContent?.trim() || '';
+                    const states = window.nfPanel.tt.session.hass?.states || {};
+                    const sensors = Object.entries(states).filter(([k]) => k.startsWith('sensor.') && (k.endsWith('_temp') || k.endsWith('_humidity')));
+                    const bad = sensors.filter(([, v]) => !v || v.state === 'unavailable' || v.state === 'unknown' || !Number.isFinite(Number(v.state)));
+                    return { ident, pillState, ringText, hasTtCursor, ttBadge, total: sensors.length, badCount: bad.length };
+                }""")
+                tt_samples.append(snap)
+                if snap["total"] == 0 or snap["badCount"] > 0:
+                    raise RuntimeError(f"Time Travel had invalid sensor readings at frac={frac}: {snap}")
+                expected_ring = f"{float(snap['pillState']):.1f}°"
+                if snap["ringText"] != expected_ring or not snap["hasTtCursor"]:
+                    raise RuntimeError(f"Time Travel gauge/chart mismatch at frac={frac}: expected ring='{expected_ring}' with cursor, got {snap}")
+
+            # Exit Time Travel and verify Live values restore
             page.evaluate("() => window.nfPanel.tt.stop()")
+            page.wait_for_timeout(350)
+            live_after = page.evaluate("""() => {
+                const v3d = window.nfPanel.shadowRoot.querySelector('fp3d-view3d');
+                const card = v3d.shadowRoot.querySelector('.live-card-env-full');
+                return {
+                    ringText: card?.querySelector('[title="Temperature Gauge"] b')?.textContent?.trim() || '',
+                    hasTtCursor: !!card?.querySelector('.live-chart-tt-cursor'),
+                    ttActive: !!window.nfPanel.tt?.session?.active
+                };
+            }""")
+            if live_after["hasTtCursor"] or live_after["ringText"] != f"{float(live_temp_before):.1f}°":
+                raise RuntimeError(f"Returning to Live did not restore live gauge/chart: before={live_temp_before}, after={live_after}")
+            print(f"  ✓ Time Travel 3-timestamp check PASSED (pill === gauge === chart cursor at 15%, 50%, 85% + Live restored): {[(s['pillState'], s['ringText'], s['ttBadge']) for s in tt_samples]}")
+
+            # Verify Tasks 1, 2, 3: Wi-Fi Survey Band/Channel CRUD, Floating AP dropdown with Band/Channel, duplicate legend (a) REMOVED & replaced with Channel/WiFi dropdown while main Neon3D legend remains
+            print(">> [5b/8] Verifying Wi-Fi Survey Band/Channel, AP Dropdown, Single Legend & Channel Filter...")
+            page.evaluate("() => window.toggleMonitsDrawer('wifi')")
+            page.wait_for_selector("#drawerWifiSurvey.open", timeout=5000)
+            page.fill("#newWifiSsid", "AP-Lobby-Main")
+            page.fill("#newWifiRssi", "-44")
+            page.select_option("#newWifiBand", "5GHz")
+            page.fill("#newWifiChannel", "36")
+            page.click("#btnAddWifiRssi")
+            page.wait_for_function("() => (document.querySelector('#wifiSurveyStatusMsg')?.innerText || '').includes('AP-Lobby-Main')", timeout=8000)
+
+            wifi_ui_check = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                v3d.heatMode = 'wifi';
+                v3d.applyTint();
+                v3d.requestUpdate();
+                const bar = document.getElementById('wifiSsidBar');
+                const apOpts = Array.from(document.getElementById('liveWifiSsidSelect')?.options || []).map(o => o.textContent);
+                const chSelect = document.getElementById('liveWifiBandChannelSelect');
+                const chOpts = Array.from(chSelect?.options || []).map(o => o.value);
+                const barText = bar?.innerText || '';
+                const hasDuplicateLegend = barText.includes('-88 dBm') || barText.includes('-32 dBm');
+                const badges = Array.from(document.querySelectorAll('#wifiSurveyPointsList .wifi-band-badge')).map(b => b.textContent.trim());
+                return { apOpts, hasChannelSelect: !!chSelect, chOpts, hasDuplicateLegend, badges };
+            }""")
             page.wait_for_timeout(300)
-            if tt_check["total"] == 0 or len(tt_check["bad"]) > 0:
-                raise RuntimeError(f"Time Travel had Unavailable/invalid sensor readings: {tt_check}")
-            print(f"  ✓ Time Travel verified: {tt_check['total']} sensors loaded with real numeric values (sample: {tt_check['sample']}).")
+            main_legend_present = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                return !!v3d?.shadowRoot?.querySelector('.fp3d-legend');
+            }""")
+            if wifi_ui_check["hasDuplicateLegend"]:
+                raise RuntimeError(f"Duplicate RSSI legend (a) still present in #wifiSsidBar! {wifi_ui_check}")
+            if not wifi_ui_check["hasChannelSelect"] or "band:5GHz" not in wifi_ui_check["chOpts"]:
+                raise RuntimeError(f"Channel/WiFi dropdown missing or incomplete: {wifi_ui_check}")
+            if not any("AP-Lobby-Main" in o and "5 GHz" in o and "ch36" in o for o in wifi_ui_check["apOpts"]):
+                raise RuntimeError(f"Floating AP dropdown missing Band/Channel info: {wifi_ui_check['apOpts']}")
+            if not any("5G" in b for b in wifi_ui_check["badges"]):
+                raise RuntimeError(f"Band badge missing in Measured RSSI Points list: {wifi_ui_check['badges']}")
+            if not main_legend_present:
+                raise RuntimeError("Main Neon3D canvas RSSI legend (.fp3d-legend) was missing!")
+            print(f"  ✓ Wi-Fi Survey Band/Channel verified: badges={wifi_ui_check['badges']}, AP options={wifi_ui_check['apOpts']}, duplicate legend removed, main .fp3d-legend active.")
+            page.evaluate("() => { window.toggleMonitsDrawer(null); const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d'); v3d.heatMode = 'none'; v3d.applyTint(); }")
+
+            # Verify Task 4: Theme Picker (Dark <-> Light) applies instantly to Neon3D without reload & persists across pages!
+            print(">> [5c/8] Verifying Dark <-> Light Theme Switch on Neon3D (instant, no reload) & persistence...")
+            page.evaluate("() => window.applyAppTheme('light', true)")
+            page.wait_for_timeout(400)
+            light_check = page.evaluate("""() => {
+                const panel = document.querySelector('neonplan3d-panel');
+                const v3d = panel?.shadowRoot?.querySelector('fp3d-view3d');
+                return {
+                    htmlTheme: document.documentElement.dataset.theme,
+                    lsTheme: localStorage.getItem('monit_theme'),
+                    panelTheme: panel?._theme,
+                    v3dTheme: v3d?.theme,
+                    bgVar: getComputedStyle(document.documentElement).getPropertyValue('--bg-app').trim()
+                };
+            }""")
+            if light_check["htmlTheme"] != "light" or light_check["panelTheme"] != "day" or light_check["v3dTheme"] != "day":
+                raise RuntimeError(f"Light theme did not propagate to Neon3D instantly: {light_check}")
+            print(f"  ✓ Light theme applied instantly to app + Neon3D 3D scene: {light_check}")
 
             # 6. Test 3D Cabling (Below Floor, In Wall, Ceiling for Power, FO, Ethernet) in Editor mode
             print(">> [6/8] Testing 3D Cabling (Power, FO, Ethernet in Below Floor / Wall / Ceiling)...")
@@ -398,14 +518,27 @@ def run_smoke_test():
             page.evaluate("() => window.toggleMonitsDrawer(null)")
             print(f"  ✓ 3D Cable routing verified: {cable_msg}")
 
-            # 7. Test 3D CAD Editor Modification + Explicit Save
-            print(">> [7/8] Testing 3D CAD Editor Modification & Explicit Save to SQLite DB...")
+            # 7. Test 3D CAD Editor Modification + Extras Parity (Wi-Fi Points, Thermo-Hygro Badges, Rack Labels) + Explicit Save
+            print(">> [7/8] Testing 2D/3D CAD Editor Extras & Explicit Save to SQLite DB...")
             page.locator("#btnEditMode").click()
             page.wait_for_timeout(1000)
 
             mode = page.evaluate("() => document.querySelector('neonplan3d-panel')?._mode")
             if mode != "editor":
                 raise RuntimeError(f"Expected mode 'editor', got '{mode}'")
+
+            editor_extras_check = page.evaluate("""() => {
+                const ed = document.querySelector('neonplan3d-panel')?.shadowRoot?.querySelector('fp3d-editor');
+                const svg = ed?.shadowRoot?.querySelector('svg.fp3d-plan');
+                const wifiPins = svg ? svg.querySelectorAll('.fp3d-wifi-pt').length : 0;
+                const thermoBadges = svg ? svg.querySelectorAll('.fp3d-thermo-badge').length : 0;
+                const rackLabels = svg ? svg.querySelectorAll('.fp3d-rack-label').length : 0;
+                const htmlTheme = document.documentElement.dataset.theme;
+                return { wifiPins, thermoBadges, rackLabels, htmlTheme };
+            }""")
+            if editor_extras_check["wifiPins"] < 1 or editor_extras_check["thermoBadges"] < 1:
+                raise RuntimeError(f"Expected 2D editor to render Wi-Fi points and Thermo-Hygro live badges, got: {editor_extras_check}")
+            print(f"  ✓ 2D Editor unified extras verified in {editor_extras_check['htmlTheme']} theme: {editor_extras_check}")
 
             # Modify building in Editor (add a custom room 'Custom AI Cluster Pod') and click #btnSavePlan
             page.evaluate("""() => {
@@ -427,21 +560,40 @@ def run_smoke_test():
             page.wait_for_timeout(600)
             print("  ✓ Modified 3D building in Editor and saved via 💾 Save button.")
 
-            # 8. Navigate to /admin/users, /admin/settings, /admin/audit to verify unified .fp3d-app-header layout & DB persistence!
-            print(">> [8/8] Verifying unified header on /admin/users, /admin/settings, /admin/audit and DB persistence...")
+            # 8. Navigate to /admin/users, /admin/settings, /admin/audit to verify unified .fp3d-app-header layout, theme persistence & DB persistence!
+            print(">> [8/8] Verifying unified header & Light/Dark theme persistence on /admin/users, /admin/settings, /admin/audit...")
             page.locator("#btnNavUsers").click()
             page.wait_for_url(f"{BASE_URL}/admin/users", timeout=8000)
             if page.locator("header.fp3d-app-header").count() != 1:
                 raise RuntimeError("Expected unified .fp3d-app-header on /admin/users")
+            if page.evaluate("() => document.documentElement.dataset.theme") != "light":
+                raise RuntimeError("Expected Light theme to persist on /admin/users!")
             page.goto(f"{BASE_URL}/admin/settings")
             if page.locator("header.fp3d-app-header").count() != 1:
                 raise RuntimeError("Expected unified .fp3d-app-header on /admin/settings")
+            if page.evaluate("() => document.documentElement.dataset.theme") != "light":
+                raise RuntimeError("Expected Light theme to persist on /admin/settings!")
             page.goto(f"{BASE_URL}/admin/audit")
             if page.locator("header.fp3d-app-header").count() != 1:
                 raise RuntimeError("Expected unified .fp3d-app-header on /admin/audit")
+            if page.evaluate("() => document.documentElement.dataset.theme") != "light":
+                raise RuntimeError("Expected Light theme to persist on /admin/audit!")
             page.goto(f"{BASE_URL}/")
             page.wait_for_selector("neonplan3d-panel", timeout=10000)
             page.wait_for_function("() => window.monitsApi && window.nfPanel && window.nfPanel.data && window.nfPanel.data.building", timeout=10000)
+            if page.evaluate("() => document.documentElement.dataset.theme") != "light":
+                raise RuntimeError("Expected Light theme to persist when returning to /!")
+            # Toggle back to Dark (neon) and verify instant Neon3D update
+            page.evaluate("() => window.applyAppTheme('neon', true)")
+            page.wait_for_timeout(350)
+            dark_check = page.evaluate("""() => {
+                const panel = document.querySelector('neonplan3d-panel');
+                const v3d = panel?.shadowRoot?.querySelector('fp3d-view3d');
+                return { htmlTheme: document.documentElement.dataset.theme, panelTheme: panel?._theme, v3dTheme: v3d?.theme };
+            }""")
+            if dark_check["htmlTheme"] != "neon" or dark_check["panelTheme"] != "neon" or dark_check["v3dTheme"] != "neon":
+                raise RuntimeError(f"Dark theme restore failed on Neon3D: {dark_check}")
+            print(f"  ✓ Theme persisted across /admin/users, /admin/settings, /admin/audit, and restored to Dark (neon): {dark_check}")
 
             persisted_check = page.evaluate("""() => {
                 const b = window.monitsApi.getBuilding();

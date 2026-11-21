@@ -274,4 +274,85 @@ async def test_db_sensors_and_virtual_states(client, db_session):
     assert hist_ext_data["readings"][0]["temperature"] == 22.4
     assert hist_ext_data["readings"][1]["humidity"] == 49.5
 
+    # 11. Phase 4 Wi-Fi Survey RSSI CRUD, Band/Channel, legacy migration, AP summaries, Export/Import
+    w1 = await client.post(
+        "/api/v1/wifi-survey",
+        headers=admin_headers,
+        json={"ssid": "DC-Core-5G", "rssi_dbm": -42, "band": "5GHz", "channel": 36, "floor_id": "ground", "x": 2.0, "z": 1.5},
+    )
+    assert w1.status_code == 201
+    w1_data = w1.json()
+    w1_id = w1_data["id"]
+    assert w1_data["band"] == "5GHz"
+    assert w1_data["channel"] == 36
+
+    w_batch = await client.post(
+        "/api/v1/wifi-survey/batch",
+        headers=admin_headers,
+        json={
+            "points": [
+                {"ssid": "DC-Core-5G", "rssi_dbm": -58, "band": "5GHz", "channel": 44, "floor_id": "ground", "x": 4.5, "z": 2.0},
+                {"ssid": "DC-Guest-2.4G", "rssi_dbm": -64, "band": "2.4GHz", "channel": 6, "floor_id": "ground", "x": 3.0, "z": 1.2},
+            ]
+        },
+    )
+    assert w_batch.status_code == 201
+
+    # Simulate legacy record without band/channel in SystemConfig to verify automatic migration
+    from backend.app.db.models.system_config import SystemConfig as _SC
+    import json as _json
+    cfg_row = (await db_session.execute(select(_SC).where(_SC.key == "wifi_survey_points"))).scalar_one()
+    raw_pts = _json.loads(cfg_row.value)
+    raw_pts.append({"id": "legacy_pt_1", "ssid": "Legacy-AP", "rssi_dbm": -70, "floor_id": "ground", "x": 1.0, "z": 1.0})
+    cfg_row.value = _json.dumps(raw_pts)
+    await db_session.commit()
+
+    w_list = await client.get("/api/v1/wifi-survey", headers=admin_headers)
+    assert w_list.status_code == 200
+    w_payload = w_list.json()
+    assert sorted(w_payload["ssids"]) == ["DC-Core-5G", "DC-Guest-2.4G", "Legacy-AP"]
+    legacy_migrated = next(p for p in w_payload["points"] if p["id"] == "legacy_pt_1")
+    assert legacy_migrated["band"] == "5GHz"
+    assert "channel" in legacy_migrated
+    core_ap = next(a for a in w_payload["aps"] if a["ssid"] == "DC-Core-5G")
+    assert "5 GHz" in core_ap["label"] and "ch36" in core_ap["label"]
+
+    w_filtered = await client.get("/api/v1/wifi-survey", params={"ssid": "DC-Core-5G", "band": "5GHz"}, headers=admin_headers)
+    assert w_filtered.status_code == 200
+    assert len(w_filtered.json()["points"]) == 2
+
+    w_upd = await client.put(
+        f"/api/v1/wifi-survey/{w1_id}",
+        headers=admin_headers,
+        json={"rssi_dbm": -45, "band": "6GHz", "channel": 37},
+    )
+    assert w_upd.status_code == 200
+    assert w_upd.json()["rssi_dbm"] == -45.0
+    assert w_upd.json()["band"] == "6GHz"
+    assert w_upd.json()["channel"] == 37
+
+    # Export JSON and CSV include band & channel
+    exp_json = await client.get("/api/v1/wifi-survey/export", params={"format": "json"}, headers=admin_headers)
+    assert exp_json.status_code == 200
+    exp_pts = exp_json.json()["points"]
+    assert any(p["band"] == "6GHz" and p["channel"] == 37 for p in exp_pts)
+
+    exp_csv = await client.get("/api/v1/wifi-survey/export", params={"format": "csv"}, headers=admin_headers)
+    assert exp_csv.status_code == 200
+    assert "band,channel" in exp_csv.text
+    assert "6GHz,37" in exp_csv.text
+
+    # Import CSV round-trip
+    imp_res = await client.post(
+        "/api/v1/wifi-survey/import",
+        headers=admin_headers,
+        json={"format": "csv", "data": "ssid,rssi_dbm,band,channel,floor_id,x,z\nImported-6G,-50,6GHz,69,ground,2.2,3.3\n", "replace": False},
+    )
+    assert imp_res.status_code in (200, 201)
+    assert imp_res.json()["imported"] == 1
+
+    w_del = await client.delete(f"/api/v1/wifi-survey/{w1_id}", headers=admin_headers)
+    assert w_del.status_code == 200
+
+
 

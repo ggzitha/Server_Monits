@@ -22,7 +22,7 @@
 
   <!-- 1. Stream Gateway (Frigate go2rtc) -->
   <div class="card" style="margin-bottom: 1.5rem;">
-    <h3 style="font-size: 1.05rem; font-weight: 600; color: #fff; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+    <h3 style="font-size: 1.05rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
       <span style="color: var(--accent-magenta);">📹</span> Stream Gateway (Frigate go2rtc)
     </h3>
     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
@@ -47,7 +47,7 @@
   <!-- 2. External Mosquitto MQTT Broker -->
   <div class="card" style="margin-bottom: 1.5rem;">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-      <h3 style="font-size: 1.05rem; font-weight: 600; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+      <h3 style="font-size: 1.05rem; font-weight: 600; color: var(--text-main); margin: 0; display: flex; align-items: center; gap: 0.5rem;">
         <span style="color: var(--accent-cyan);">📡</span> External Mosquitto MQTT Broker
       </h3>
       <span id="mqttStatusDetail" style="font-size: 0.75rem; color: var(--text-muted); font-family: var(--font-mono);"></span>
@@ -110,7 +110,7 @@
 
   <!-- 3. General Preferences & Retention -->
   <div class="card" style="margin-bottom: 1.5rem;">
-    <h3 style="font-size: 1.05rem; font-weight: 600; color: #fff; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+    <h3 style="font-size: 1.05rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
       <span style="color: var(--accent-green);">⚙️</span> General & Retention Preferences
     </h3>
     <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 1rem;">
@@ -175,7 +175,7 @@
     </div>
 
     <!-- Add Data Source Form -->
-    <div id="addDataSourceForm" style="display: none; background: rgba(7, 11, 20, 0.75); border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; margin-bottom: 1rem;">
+    <div id="addDataSourceForm" style="display: none; background: var(--bg-card-inner); border: 1px solid var(--border-color); border-radius: 10px; padding: 1rem; margin-bottom: 1rem;">
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
         <div class="form-group">
           <label class="form-label">Name</label>
@@ -543,7 +543,7 @@
       const cfg = d.config || {};
       const endpoint = cfg.host ? `${cfg.host}${cfg.port ? ':' + cfg.port : ''}${cfg.database ? '/' + cfg.database : ''}` : (cfg.path || cfg.database || cfg.url || 'configured');
       return `
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; padding:0.75rem 0.9rem; border-radius:8px; background:rgba(7,11,20,0.65); border:1px solid var(--border-color);">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; padding:0.75rem 0.9rem; border-radius:8px; background:var(--bg-card-inner); border:1px solid var(--border-color);">
           <div>
             <div style="font-weight:600; color:var(--text-main);">${d.name}</div>
             <div style="font-size:0.76rem; color:var(--text-muted);">

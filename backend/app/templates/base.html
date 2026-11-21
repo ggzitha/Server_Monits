@@ -7,8 +7,18 @@
   
   <meta name="csrf-token" content="{{ csrf_token|default('') }}">
   
-  <link rel="stylesheet" href="/static/css/themes.css">
-  <link rel="stylesheet" href="/static/css/main.css">
+  <link rel="stylesheet" href="/static/css/themes.css?v=20261122b">
+  <link rel="stylesheet" href="/static/css/main.css?v=20261122b">
+  <script>
+    (function() {
+      try {
+        const saved = localStorage.getItem('monit_theme');
+        if (saved === 'light' || saved === 'neon') {
+          document.documentElement.setAttribute('data-theme', saved);
+        }
+      } catch (e) {}
+    })();
+  </script>
   <style>
     .fp3d-app-header {
       display: flex;
@@ -16,22 +26,23 @@
       gap: 10px;
       padding: 8px 14px;
       flex-wrap: wrap;
-      background: rgba(14, 21, 38, 0.96);
-      border-bottom: 1px solid rgba(0, 240, 255, 0.25);
-      color: #e1e1e1;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-main);
       font-family: Roboto, "Noto Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
       position: sticky;
       top: 0;
       z-index: 1000;
       min-height: 52px;
       box-sizing: border-box;
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
     }
     .fp3d-app-header h1 {
       margin: 0 4px 0 0;
       font-size: 16px;
       font-weight: 700;
       letter-spacing: -0.01em;
-      color: #f8fafc;
+      color: var(--text-main);
       white-space: nowrap;
     }
     .fp3d-app-seg {
@@ -39,8 +50,8 @@
       padding: 4px;
       gap: 2px;
       border-radius: 999px;
-      background: rgba(28, 34, 52, 0.88);
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), 0 6px 20px rgba(0, 0, 0, 0.2);
+      background: var(--bg-seg);
+      box-shadow: var(--card-shadow);
       backdrop-filter: blur(10px);
       align-items: center;
     }
@@ -52,7 +63,7 @@
       font-weight: 500;
       border: none;
       background: none;
-      color: #9b9b9b;
+      color: var(--text-muted);
       padding: 6px 14px;
       border-radius: 999px;
       cursor: pointer;
@@ -65,12 +76,12 @@
     }
     .fp3d-app-seg a:hover,
     .fp3d-app-seg button:hover {
-      background: rgba(225, 225, 225, 0.08);
-      color: #e1e1e1;
+      background: var(--accent-cyan-soft);
+      color: var(--text-main);
     }
     .fp3d-app-seg a.active {
-      background: rgba(3, 169, 244, 0.22);
-      color: #37e0ff;
+      background: var(--accent-cyan-soft);
+      color: var(--accent-cyan);
     }
     .fp3d-app-grow {
       flex: 1;
@@ -94,9 +105,9 @@
 
     <label class="fp3d-app-seg" title="Language / Bahasa" style="padding: 4px 10px;">
       🌐
-      <select id="langSwitcher" aria-label="Language" style="padding: 4px 6px; color: #f8fafc; background: transparent;" onchange="switchLanguage(this.value)">
-        <option value="en" style="background:#0e1526;" {% if current_lang == 'en' %}selected{% endif %}>EN</option>
-        <option value="id" style="background:#0e1526;" {% if current_lang == 'id' %}selected{% endif %}>ID</option>
+      <select id="langSwitcher" aria-label="Language" style="padding: 4px 6px; color: var(--text-main); background: transparent;" onchange="switchLanguage(this.value)">
+        <option value="en" style="background: var(--bg-surface); color: var(--text-main);" {% if current_lang == 'en' %}selected{% endif %}>EN</option>
+        <option value="id" style="background: var(--bg-surface); color: var(--text-main);" {% if current_lang == 'id' %}selected{% endif %}>ID</option>
       </select>
     </label>
 
@@ -106,7 +117,7 @@
 
     {% if current_user %}
     <div class="fp3d-app-seg">
-      <span style="font-size: 12.5px; color: #94a3b8; padding: 0 8px;">{{ current_user.username }}</span>
+      <span style="font-size: 12.5px; color: var(--text-muted); padding: 0 8px;">{{ current_user.username }}</span>
       <button onclick="handleLogout()">⏻ {{ _('logout') }}</button>
     </div>
     {% else %}
@@ -122,25 +133,38 @@
   </main>
 
   <script>
-    // Client-side theme toggler
-    function toggleTheme() {
-      const html = document.documentElement;
-      const current = html.getAttribute('data-theme') || 'neon';
-      const next = current === 'neon' ? 'light' : 'neon';
-      html.setAttribute('data-theme', next);
-      localStorage.setItem('monit_theme', next);
-      document.cookie = `monit_theme=${next}; path=/; max-age=31536000`;
-      
-      // Update profile if logged in
-      fetch('/api/v1/auth/me', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-Token': getCsrfToken()
-        },
-        body: JSON.stringify({ preferred_theme: next })
-      }).catch(() => {});
+    // Shared client-side theme toggler (applies to all pages + Neon3D + 2D Editor instantly)
+    function applyAppTheme(next, persistServer = true) {
+      const normalized = next === 'light' ? 'light' : 'neon';
+      document.documentElement.setAttribute('data-theme', normalized);
+      try {
+        localStorage.setItem('monit_theme', normalized);
+        localStorage.setItem('neonplan3d.theme', normalized === 'light' ? 'day' : 'neon');
+      } catch (e) {}
+      document.cookie = `monit_theme=${normalized}; path=/; max-age=31536000`;
+      const icon = document.getElementById('themeIcon');
+      if (icon) icon.textContent = normalized === 'light' ? '☀️' : '🌙';
+      window.dispatchEvent(new CustomEvent('monits-theme-changed', { detail: { theme: normalized } }));
+
+      if (persistServer) {
+        fetch('/api/v1/auth/me', {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': getCsrfToken()
+          },
+          body: JSON.stringify({ preferred_theme: normalized })
+        }).catch(() => {});
+      }
     }
+    window.applyAppTheme = applyAppTheme;
+
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'neon';
+      const next = current === 'neon' ? 'light' : 'neon';
+      applyAppTheme(next, true);
+    }
+    window.toggleTheme = toggleTheme;
 
     // Language switcher
     function switchLanguage(lang) {
