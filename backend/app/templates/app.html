@@ -8,7 +8,8 @@
 
 {% block extra_head %}
 <style>
-  html, body {
+  html,
+  body {
     height: 100%;
     width: 100%;
     margin: 0;
@@ -41,7 +42,8 @@
     background: var(--bg-app);
   }
 
-  neonplan3d-panel, nextfloor-panel {
+  neonplan3d-panel,
+  nextfloor-panel {
     width: 100%;
     height: 100%;
     display: flex;
@@ -262,18 +264,22 @@
     white-space: nowrap;
     border: 1px solid currentColor;
   }
+
   .wifi-band-badge.band-24 {
     color: var(--accent-amber);
     background: rgba(245, 158, 11, 0.14);
   }
+
   .wifi-band-badge.band-5 {
     color: var(--accent-cyan);
     background: var(--accent-cyan-soft);
   }
+
   .wifi-band-badge.band-6 {
     color: var(--accent-magenta);
     background: rgba(217, 70, 239, 0.14);
   }
+
   .wifi-band-badge.band-na {
     color: var(--text-muted);
     background: var(--bg-surface-elevated);
@@ -295,7 +301,8 @@
   <div class="monits-drawer-header">
     <div class="monits-drawer-title">
       <span>💡</span>
-      <span>{{ 'Sensor Suhu/Kelembaban DB & Lampu Virtual' if current_lang == 'id' else 'DB Temp/Humidity Sensors & Virtual Lights' }}</span>
+      <span>{{ 'Sensor Suhu/Kelembaban DB & Lampu Virtual' if current_lang == 'id' else 'DB Temp/Humidity Sensors &
+        Virtual Lights' }}</span>
     </div>
     <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
   </div>
@@ -303,12 +310,14 @@
     <!-- Section 1: Add & Place New Temperature & Humidity Sensor at Specific Place -->
     <div class="monits-subcard">
       <h4 class="monits-section-title" style="margin-top:0;">
-        {{ '1. Tambah & Tempatkan Sensor di Lokasi Spesifik' if current_lang == 'id' else '1. Add & Place Sensor at Specific Location' }}
+        {{ '1. Tambah & Tempatkan Sensor di Lokasi Spesifik' if current_lang == 'id' else '1. Add & Place Sensor at
+        Specific Location' }}
       </h4>
       <div class="monits-form-grid">
         <label style="grid-column: span 2;">
           <span>{{ 'Nama Sensor' if current_lang == 'id' else 'Sensor Name' }}</span>
-          <input id="newSensorName" type="text" placeholder="Rack A04 Cold Aisle Sensor" value="Rack A04 Cold Aisle" class="monits-input" />
+          <input id="newSensorName" type="text" placeholder="Rack A04 Cold Aisle Sensor" value="Rack A04 Cold Aisle"
+            class="monits-input" />
         </label>
         <label style="grid-column: span 2;">
           <span>{{ 'Tipe Sensor' if current_lang == 'id' else 'Sensor Type' }}</span>
@@ -332,8 +341,10 @@
         <label>
           <span>{{ 'Posisi X & Z (meter)' if current_lang == 'id' else 'Position X & Z (meters)' }}</span>
           <div style="display:flex; gap:4px;">
-            <input id="newSensorX" type="number" step="0.2" value="3.5" class="monits-input" title="X coordinate (m)" placeholder="X (m)" />
-            <input id="newSensorZ" type="number" step="0.2" value="2.4" class="monits-input" title="Z coordinate (m)" placeholder="Z (m)" />
+            <input id="newSensorX" type="number" step="0.2" value="3.5" class="monits-input" title="X coordinate (m)"
+              placeholder="X (m)" />
+            <input id="newSensorZ" type="number" step="0.2" value="2.4" class="monits-input" title="Z coordinate (m)"
+              placeholder="Z (m)" />
           </div>
         </label>
         <label>
@@ -361,24 +372,34 @@
           <input id="newSensorVolt" type="number" step="0.5" value="220.0" class="monits-input" />
         </label>
         <label style="grid-column: span 2;">
-          <span>{{ 'Sumber Data Grafana (Opsional)' if current_lang == 'id' else 'Grafana Data Source (Optional)' }}</span>
+          <span>{{ 'Sumber Data Grafana (Opsional)' if current_lang == 'id' else 'Grafana Data Source (Optional)'
+            }}</span>
           <select id="newSensorDataSource" class="monits-input">
             <option value="">-- Local DB (Manual / API) --</option>
           </select>
         </label>
         <label id="wrapNewSensorSql" style="grid-column: span 2;">
-          <span>{{ 'Query SQL (Gabungan / Utama)' if current_lang == 'id' else 'SQL Query (Combined or Primary)' }}</span>
-          <textarea id="newSensorSqlQuery" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature, Humidity FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time" style="font-family:monospace; font-size:0.72rem;"></textarea>
+          <span>{{ 'Query SQL (Gabungan / Utama)' if current_lang == 'id' else 'SQL Query (Combined or Primary)'
+            }}</span>
+          <textarea id="newSensorSqlQuery" rows="2" class="monits-input"
+            placeholder="SELECT Date_Time AS &quot;time&quot;, Temperature, Humidity FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time"
+            style="font-family:monospace; font-size:0.72rem;"></textarea>
         </label>
         <label id="wrapNewSensorSqlHum" style="grid-column: span 2;">
-          <span>{{ 'Query SQL Kelembaban #2 (Opsional jika terpisah)' if current_lang == 'id' else 'Humidity SQL Query #2 (Optional if separate)' }}</span>
-          <textarea id="newSensorSqlQueryHumidity" rows="2" class="monits-input" placeholder="SELECT Date_Time AS &quot;time&quot;, Humidity FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time" style="font-family:monospace; font-size:0.72rem;"></textarea>
+          <span>{{ 'Query SQL Kelembaban #2 (Opsional jika terpisah)' if current_lang == 'id' else 'Humidity SQL Query
+            #2 (Optional if separate)' }}</span>
+          <textarea id="newSensorSqlQueryHumidity" rows="2" class="monits-input"
+            placeholder="SELECT Date_Time AS &quot;time&quot;, Humidity FROM 01_rtime_ruang_suhu WHERE Date_Time BETWEEN $__timeFrom() AND $__timeTo() ORDER BY Date_Time"
+            style="font-family:monospace; font-size:0.72rem;"></textarea>
         </label>
-        <div style="grid-column: span 2; display:flex; flex-direction:column; gap:6px; padding-top:4px; border-top:1px solid var(--border-subtle);">
-          <div style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:0.74rem; color:var(--text-main);">
+        <div
+          style="grid-column: span 2; display:flex; flex-direction:column; gap:6px; padding-top:4px; border-top:1px solid var(--border-subtle);">
+          <div
+            style="display:flex; gap:14px; align-items:center; flex-wrap:wrap; font-size:0.74rem; color:var(--text-main);">
             <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; flex-direction:row;">
               <input id="newSensorGrafanaLink" type="checkbox" />
-              <span>{{ 'Tautkan Klik Grafik ke URL (Grafana)' if current_lang == 'id' else 'Linked URL on Chart Click' }}</span>
+              <span>{{ 'Tautkan Klik Grafik ke URL (Grafana)' if current_lang == 'id' else 'Linked URL on Chart Click'
+                }}</span>
             </label>
             <label style="display:inline-flex; align-items:center; gap:5px; cursor:pointer; flex-direction:row;">
               <input id="newSensorGrafanaNewTab" type="checkbox" checked />
@@ -388,8 +409,10 @@
           <input id="newSensorGrafanaUrl" type="url" class="monits-input" placeholder="http://10.101.0.1:3000/d/..." />
         </div>
       </div>
-      <button id="btnPlaceSensorIn3D" class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:7px;" onclick="window.handleAddAndPlaceSensor()">
-        ➕ {{ 'Tempatkan Sensor di 3D & Simpan ke Database' if current_lang == 'id' else 'Place Sensor at (X, Z, Y) in 3D & Save to DB' }}
+      <button id="btnPlaceSensorIn3D" class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:7px;"
+        onclick="window.handleAddAndPlaceSensor()">
+        ➕ {{ 'Tempatkan Sensor di 3D & Simpan ke Database' if current_lang == 'id' else 'Place Sensor at (X, Z, Y) in 3D
+        & Save to DB' }}
       </button>
       <div id="sensorPlaceStatusMsg" style="font-size:0.74rem; color:var(--accent-green); margin-top:6px;"></div>
     </div>
@@ -400,12 +423,14 @@
         <h4 class="monits-section-title" style="margin:0;">
           {{ '2. Nilai Sensor Aktif di Database' if current_lang == 'id' else '2. Live Database Sensors' }}
         </h4>
-        <button type="button" id="btnSyncAllSql" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 8px;" onclick="window.handleSyncAllSqlSensors(this)">
+        <button type="button" id="btnSyncAllSql" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 8px;"
+          onclick="window.handleSyncAllSqlSensors(this)">
           🔄 {{ 'Sinkron SQL' if current_lang == 'id' else 'Sync SQL' }}
         </button>
       </div>
       <div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 8px;">
-        {{ 'Ubah nilai manual atau hubungkan Sumber Data & Query SQL per sensor:' if current_lang == 'id' else 'Edit manual values or bind each sensor to a Grafana Data Source & SQL query:' }}
+        {{ 'Ubah nilai manual atau hubungkan Sumber Data & Query SQL per sensor:' if current_lang == 'id' else 'Edit
+        manual values or bind each sensor to a Grafana Data Source & SQL query:' }}
       </div>
       <div id="dbSensorsList"></div>
     </div>
@@ -413,15 +438,21 @@
     <!-- Section 3: Virtual Room Lights -->
     <div>
       <h4 class="monits-section-title">
-        {{ '3. Sakelar Lampu Ruangan Virtual (Kontrol 3D Langsung)' if current_lang == 'id' else '3. Virtual Room Lights (Direct 3D Control)' }}
+        {{ '3. Sakelar Lampu Ruangan Virtual (Kontrol 3D Langsung)' if current_lang == 'id' else '3. Virtual Room Lights
+        (Direct 3D Control)' }}
       </h4>
       <div class="monits-subcard" style="padding: 8px; margin-bottom: 8px;">
         <div style="display:grid; grid-template-columns: 1fr 56px 56px 32px auto; gap:5px; align-items:center;">
-          <input id="newLightName" type="text" class="monits-input" placeholder="{{ 'Nama Lampu Baru' if current_lang == 'id' else 'New Light Name' }}" />
-          <input id="newLightX" type="number" step="0.2" value="2.5" class="monits-input" title="X (m)" placeholder="X" />
-          <input id="newLightZ" type="number" step="0.2" value="1.5" class="monits-input" title="Z (m)" placeholder="Z" />
-          <input id="newLightColor" type="color" value="#fff4d6" title="Light Color" style="width:28px; height:26px; border:none; background:none; cursor:pointer;" />
-          <button class="monits-pill-btn on" style="padding:5px 8px;" onclick="window.handleAddVirtualLight()">➕</button>
+          <input id="newLightName" type="text" class="monits-input"
+            placeholder="{{ 'Nama Lampu Baru' if current_lang == 'id' else 'New Light Name' }}" />
+          <input id="newLightX" type="number" step="0.2" value="2.5" class="monits-input" title="X (m)"
+            placeholder="X" />
+          <input id="newLightZ" type="number" step="0.2" value="1.5" class="monits-input" title="Z (m)"
+            placeholder="Z" />
+          <input id="newLightColor" type="color" value="#fff4d6" title="Light Color"
+            style="width:28px; height:26px; border:none; background:none; cursor:pointer;" />
+          <button class="monits-pill-btn on" style="padding:5px 8px;"
+            onclick="window.handleAddVirtualLight()">➕</button>
         </div>
       </div>
       <div id="virtualLightsList"></div>
@@ -434,7 +465,8 @@
   <div class="monits-drawer-header">
     <div class="monits-drawer-title">
       <span>🔌</span>
-      <span>{{ 'Manajer Jalur Kabel 3D (Bawah Lantai / Dinding / Plafon)' if current_lang == 'id' else '3D Cabling (Below Floor / Wall / Ceiling)' }}</span>
+      <span>{{ 'Manajer Jalur Kabel 3D (Bawah Lantai / Dinding / Plafon)' if current_lang == 'id' else '3D Cabling
+        (Below Floor / Wall / Ceiling)' }}</span>
     </div>
     <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
   </div>
@@ -448,24 +480,32 @@
 
     <div>
       <h4 class="monits-section-title">
-        {{ '2. Tambah Jalur Kabel Baru ke Denah 3D' if current_lang == 'id' else '2. Place New Cable Run in 3D Floor Plan' }}
+        {{ '2. Tambah Jalur Kabel Baru ke Denah 3D' if current_lang == 'id' else '2. Place New Cable Run in 3D Floor
+        Plan' }}
       </h4>
       <div class="monits-form-grid">
         <label>
           <span>{{ 'Jenis Kabel' if current_lang == 'id' else 'Cable Type' }}</span>
           <select id="cableTypeSelect" class="monits-input">
-            <option value="power">⚡ {{ 'Kabel Listrik / Power' if current_lang == 'id' else 'Electric / Power Cable' }}</option>
-            <option value="fiber">💎 {{ 'Kabel Fiber Optik (FO)' if current_lang == 'id' else 'Fiber Optic (FO) Cable' }}</option>
-            <option value="ethernet">🌐 {{ 'Kabel Ethernet (LAN Cat6A)' if current_lang == 'id' else 'Ethernet (LAN Cat6A) Cable' }}</option>
-            <option value="tray">🪜 {{ 'Tray Kabel / Ladder Frame' if current_lang == 'id' else 'Cable Tray / Ladder Frame' }}</option>
+            <option value="power">⚡ {{ 'Kabel Listrik / Power' if current_lang == 'id' else 'Electric / Power Cable' }}
+            </option>
+            <option value="fiber">💎 {{ 'Kabel Fiber Optik (FO)' if current_lang == 'id' else 'Fiber Optic (FO) Cable'
+              }}</option>
+            <option value="ethernet">🌐 {{ 'Kabel Ethernet (LAN Cat6A)' if current_lang == 'id' else 'Ethernet (LAN
+              Cat6A) Cable' }}</option>
+            <option value="tray">🪜 {{ 'Tray Kabel / Ladder Frame' if current_lang == 'id' else 'Cable Tray / Ladder
+              Frame' }}</option>
           </select>
         </label>
         <label>
           <span>{{ 'Posisi / Elevasi Jalur' if current_lang == 'id' else 'Routing Placement Zone' }}</span>
           <select id="cableZoneSelect" class="monits-input" onchange="onCableZoneChange(this.value)">
-            <option value="below_floor">{{ 'Bawah Lantai (-0.22 m)' if current_lang == 'id' else 'Below Floor / Subfloor (-0.22 m)' }}</option>
-            <option value="wall">{{ 'Di Dinding (+1.25 m)' if current_lang == 'id' else 'In Wall / Conduit (+1.25 m)' }}</option>
-            <option value="ceiling">{{ 'Plafon / Tray Atas (+2.88 m)' if current_lang == 'id' else 'Ceiling / Overhead (+2.88 m)' }}</option>
+            <option value="below_floor">{{ 'Bawah Lantai (-0.22 m)' if current_lang == 'id' else 'Below Floor / Subfloor
+              (-0.22 m)' }}</option>
+            <option value="wall">{{ 'Di Dinding (+1.25 m)' if current_lang == 'id' else 'In Wall / Conduit (+1.25 m)' }}
+            </option>
+            <option value="ceiling">{{ 'Plafon / Tray Atas (+2.88 m)' if current_lang == 'id' else 'Ceiling / Overhead
+              (+2.88 m)' }}</option>
             <option value="custom">{{ 'Tinggi Kustom (m)' if current_lang == 'id' else 'Custom Height (m)' }}</option>
           </select>
         </label>
@@ -503,31 +543,38 @@
       <!-- Multi-Point Turning Waypoints & Canvas Picker -->
       <div class="monits-subcard" style="margin-top:8px; padding:8px;">
         <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px;">
-          <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">{{ 'Titik Belok / Waypoints (Opsional)' if current_lang == 'id' else 'Turning Points / Waypoints (Optional)' }}</span>
+          <span style="font-size:0.72rem; color:var(--text-muted); font-weight:600;">{{ 'Titik Belok / Waypoints
+            (Opsional)' if current_lang == 'id' else 'Turning Points / Waypoints (Optional)' }}</span>
           <div style="display:flex; gap:4px;">
-            <button type="button" id="btnPickCablePoints" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 7px;" onclick="window.toggleCablePointPicker()">
+            <button type="button" id="btnPickCablePoints" class="monits-pill-btn"
+              style="font-size:0.68rem; padding:3px 7px;" onclick="window.toggleCablePointPicker()">
               📍 {{ 'Pilih di Denah' if current_lang == 'id' else 'Pick on Plan' }}
             </button>
-            <button type="button" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 7px;" onclick="window.addCableWaypoint()">
+            <button type="button" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 7px;"
+              onclick="window.addCableWaypoint()">
               + {{ 'Belok' if current_lang == 'id' else 'Turn' }}
             </button>
           </div>
         </div>
         <div id="cableWaypointsList" style="display:flex; flex-direction:column; gap:4px;"></div>
         <div id="cablePickHint" style="display:none; font-size:0.68rem; color:var(--accent-cyan); margin-top:4px;">
-          {{ 'Klik pada kanvas denah untuk menambahkan titik belok kabel (X, Z)...' if current_lang == 'id' else 'Click on the floor plan canvas to pick cable turning points (X, Z)...' }}
+          {{ 'Klik pada kanvas denah untuk menambahkan titik belok kabel (X, Z)...' if current_lang == 'id' else 'Click
+          on the floor plan canvas to pick cable turning points (X, Z)...' }}
         </div>
       </div>
 
-      <button class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:8px;" onclick="handleAddCableRun()">
-        ➕ {{ 'Tambahkan Jalur Kabel ke 3D & Simpan DB' if current_lang == 'id' else 'Add Cable Run to 3D Scene & Save to DB' }}
+      <button class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:8px;"
+        onclick="handleAddCableRun()">
+        ➕ {{ 'Tambahkan Jalur Kabel ke 3D & Simpan DB' if current_lang == 'id' else 'Add Cable Run to 3D Scene & Save to
+        DB' }}
       </button>
       <div id="cableStatusMsg" style="font-size:0.75rem; color:var(--accent-green); margin-top:6px;"></div>
     </div>
 
     <div>
       <h4 class="monits-section-title">
-        {{ '3. Daftar Jalur Kabel 3D Aktif (Edit / Hapus)' if current_lang == 'id' else '3. Placed 3D Cable Runs (Edit / Delete)' }}
+        {{ '3. Daftar Jalur Kabel 3D Aktif (Edit / Hapus)' if current_lang == 'id' else '3. Placed 3D Cable Runs (Edit /
+        Delete)' }}
       </h4>
       <div id="existingCablesList"></div>
     </div>
@@ -537,17 +584,22 @@
 <!-- Floating 2D & 3D Wi-Fi AP + Channel/Band Filter Bar (duplicate RSSI legend removed; Neon3D main legend remains) -->
 <div id="wifiSsidBar" class="wifi-floating-bar">
   <span class="wifi-bar-label">📶 {{ 'Wi-Fi AP:' if current_lang == 'id' else 'Wi-Fi AP:' }}</span>
-  <select id="liveWifiSsidSelect" class="monits-input" onchange="window.onWifiSsidFilterChange(this.value)" aria-label="Wi-Fi AP">
-    <option value="">{{ 'Semua Wi-Fi AP (Terkuat)' if current_lang == 'id' else 'All Wi-Fi APs (Best Signal)' }}</option>
+  <select id="liveWifiSsidSelect" class="monits-input" onchange="window.onWifiSsidFilterChange(this.value)"
+    aria-label="Wi-Fi AP">
+    <option value="">{{ 'Semua Wi-Fi AP (Terkuat)' if current_lang == 'id' else 'All Wi-Fi APs (Best Signal)' }}
+    </option>
   </select>
-  <span class="wifi-bar-label" style="font-size:0.72rem;">{{ 'Channel / WiFi:' if current_lang == 'id' else 'Channel / WiFi:' }}</span>
-  <select id="liveWifiBandChannelSelect" class="monits-input" onchange="window.onWifiBandChannelFilterChange(this.value)" aria-label="Channel / WiFi">
+  <span class="wifi-bar-label" style="font-size:0.72rem;">{{ 'Channel / WiFi:' if current_lang == 'id' else 'Channel /
+    WiFi:' }}</span>
+  <select id="liveWifiBandChannelSelect" class="monits-input"
+    onchange="window.onWifiBandChannelFilterChange(this.value)" aria-label="Channel / WiFi">
     <option value="">{{ 'Semua Band & Channel' if current_lang == 'id' else 'All Bands & Channels' }}</option>
     <option value="band:2.4GHz">2.4 GHz</option>
     <option value="band:5GHz">5 GHz</option>
     <option value="band:6GHz">6 GHz</option>
   </select>
-  <button type="button" class="monits-pill-btn on" style="padding:3px 9px; font-size:0.72rem;" onclick="window.toggleMonitsDrawer('wifi')">
+  <button type="button" class="monits-pill-btn on" style="padding:3px 9px; font-size:0.72rem;"
+    onclick="window.toggleMonitsDrawer('wifi')">
     + {{ 'Survei RSSI' if current_lang == 'id' else 'Survey RSSI' }}
   </button>
 </div>
@@ -557,7 +609,8 @@
   <div class="monits-drawer-header">
     <div class="monits-drawer-title">
       <span>📶</span>
-      <span>{{ 'Survei Wi-Fi RSSI & Peta Panas AP' if current_lang == 'id' else 'Wi-Fi RSSI Survey & AP Heatmap' }}</span>
+      <span>{{ 'Survei Wi-Fi RSSI & Peta Panas AP' if current_lang == 'id' else 'Wi-Fi RSSI Survey & AP Heatmap'
+        }}</span>
     </div>
     <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
   </div>
@@ -565,18 +618,23 @@
     <!-- Section 1: Select Wi-Fi AP / SSID & Band/Channel Filter (2D + 3D shared) -->
     <div class="monits-subcard">
       <h4 class="monits-section-title" style="margin-top:0;">
-        {{ '1. Filter Wi-Fi AP & Band / Channel (2D & 3D)' if current_lang == 'id' else '1. Filter Wi-Fi AP & Band / Channel (2D & 3D)' }}
+        {{ '1. Filter Wi-Fi AP & Band / Channel (2D & 3D)' if current_lang == 'id' else '1. Filter Wi-Fi AP & Band /
+        Channel (2D & 3D)' }}
       </h4>
       <div style="display:flex; flex-direction:column; gap:6px;">
         <div style="display:flex; gap:6px; align-items:center;">
-          <select id="wifiSurveyFilterSsid" class="monits-input" style="flex:1;" onchange="window.onWifiSsidFilterChange(this.value)">
-            <option value="">{{ 'Semua Wi-Fi AP (Terkuat)' if current_lang == 'id' else 'All Wi-Fi APs (Best Signal)' }}</option>
+          <select id="wifiSurveyFilterSsid" class="monits-input" style="flex:1;"
+            onchange="window.onWifiSsidFilterChange(this.value)">
+            <option value="">{{ 'Semua Wi-Fi AP (Terkuat)' if current_lang == 'id' else 'All Wi-Fi APs (Best Signal)' }}
+            </option>
           </select>
-          <button type="button" class="monits-pill-btn on" style="white-space:nowrap; padding:6px 10px;" onclick="window.activateWifiHeatmapIn3D()">
+          <button type="button" class="monits-pill-btn on" style="white-space:nowrap; padding:6px 10px;"
+            onclick="window.activateWifiHeatmapIn3D()">
             🗺️ {{ 'Lihat 3D' if current_lang == 'id' else 'Show 3D' }}
           </button>
         </div>
-        <select id="wifiSurveyFilterBandChannel" class="monits-input" onchange="window.onWifiBandChannelFilterChange(this.value)">
+        <select id="wifiSurveyFilterBandChannel" class="monits-input"
+          onchange="window.onWifiBandChannelFilterChange(this.value)">
           <option value="">{{ 'Semua Band & Channel' if current_lang == 'id' else 'All Bands & Channels' }}</option>
           <option value="band:2.4GHz">2.4 GHz</option>
           <option value="band:5GHz">5 GHz</option>
@@ -589,19 +647,23 @@
     <div class="monits-subcard">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
         <h4 class="monits-section-title" style="margin:0;">
-          {{ '2. Tambah Titik Pengukuran RSSI Wi-Fi' if current_lang == 'id' else '2. Add Wi-Fi RSSI Measurement Point' }}
+          {{ '2. Tambah Titik Pengukuran RSSI Wi-Fi' if current_lang == 'id' else '2. Add Wi-Fi RSSI Measurement Point'
+          }}
         </h4>
-        <button type="button" id="btnPickWifiPoint" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 8px;" onclick="window.toggleWifiPointPicker()">
+        <button type="button" id="btnPickWifiPoint" class="monits-pill-btn" style="font-size:0.68rem; padding:3px 8px;"
+          onclick="window.toggleWifiPointPicker()">
           📍 {{ 'Pilih di Denah' if current_lang == 'id' else 'Pick on Plan' }}
         </button>
       </div>
       <div id="wifiPickHint" style="display:none; font-size:0.68rem; color:var(--accent-cyan); margin-bottom:6px;">
-        {{ 'Klik pada denah untuk mengisi koordinat (X, Z) titik survei...' if current_lang == 'id' else 'Click on the floor plan canvas to fill (X, Z) survey coordinates...' }}
+        {{ 'Klik pada denah untuk mengisi koordinat (X, Z) titik survei...' if current_lang == 'id' else 'Click on the
+        floor plan canvas to fill (X, Z) survey coordinates...' }}
       </div>
       <div class="monits-form-grid">
         <label style="grid-column: span 2;">
           <span>{{ 'Nama Wi-Fi / AP (SSID)' if current_lang == 'id' else 'Wi-Fi / AP Name (SSID)' }}</span>
-          <input id="newWifiSsid" type="text" list="wifiSsidDatalist" placeholder="e.g. DC-ServerRoom-5G" class="monits-input" />
+          <input id="newWifiSsid" type="text" list="wifiSsidDatalist" placeholder="e.g. DC-ServerRoom-5G"
+            class="monits-input" />
           <datalist id="wifiSsidDatalist"></datalist>
         </label>
         <label>
@@ -611,12 +673,14 @@
         <label>
           <span>{{ 'Pita / Band & Channel' if current_lang == 'id' else 'Band & Channel' }}</span>
           <div style="display:flex; gap:4px;">
-            <select id="newWifiBand" class="monits-input" style="flex:1;" onchange="window.onNewWifiBandChange(this.value)">
+            <select id="newWifiBand" class="monits-input" style="flex:1;"
+              onchange="window.onNewWifiBandChange(this.value)">
               <option value="5GHz">5 GHz</option>
               <option value="2.4GHz">2.4 GHz</option>
               <option value="6GHz">6 GHz</option>
             </select>
-            <input id="newWifiChannel" type="number" min="1" max="233" value="36" class="monits-input" style="width:58px;" title="Wi-Fi Channel" placeholder="Ch" />
+            <input id="newWifiChannel" type="number" min="1" max="233" value="36" class="monits-input"
+              style="width:58px;" title="Wi-Fi Channel" placeholder="Ch" />
           </div>
         </label>
         <label>
@@ -631,23 +695,31 @@
           </div>
         </label>
       </div>
-      <button type="button" id="btnAddWifiRssi" class="monits-pill-btn on" style="width:100%; margin-top:10px; padding:7px;" onclick="window.handleAddWifiSurveyPoint()">
-        ➕ {{ 'Simpan Titik RSSI & Perbarui Peta Panas' if current_lang == 'id' else 'Save RSSI Point & Update 3D Heatmap' }}
+      <button type="button" id="btnAddWifiRssi" class="monits-pill-btn on"
+        style="width:100%; margin-top:10px; padding:7px;" onclick="window.handleAddWifiSurveyPoint()">
+        ➕ {{ 'Simpan Titik RSSI & Perbarui Peta Panas' if current_lang == 'id' else 'Save RSSI Point & Update 3D
+        Heatmap' }}
       </button>
       <div id="wifiSurveyStatusMsg" style="font-size:0.74rem; color:var(--accent-green); margin-top:6px;"></div>
     </div>
 
     <!-- Section 3: Measured Wi-Fi RSSI Points (CRUD + Band + Export/Import) -->
     <div>
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
+      <div
+        style="display:flex; justify-content:space-between; align-items:center; gap:6px; margin-bottom:6px; flex-wrap:wrap;">
         <h4 class="monits-section-title" style="margin:0; border:none; padding:0;">
-          {{ '3. Daftar Titik Survei RSSI (Edit / Hapus)' if current_lang == 'id' else '3. Measured RSSI Points (Edit / Delete)' }}
+          {{ '3. Daftar Titik Survei RSSI (Edit / Hapus)' if current_lang == 'id' else '3. Measured RSSI Points (Edit /
+          Delete)' }}
         </h4>
         <div style="display:flex; gap:4px; align-items:center;">
-          <a href="/api/v1/wifi-survey/export?format=json" download="wifi_survey.json" class="monits-pill-btn" style="font-size:0.65rem; padding:2px 7px; text-decoration:none;">⬇ JSON</a>
-          <a href="/api/v1/wifi-survey/export?format=csv" download="wifi_survey.csv" class="monits-pill-btn" style="font-size:0.65rem; padding:2px 7px; text-decoration:none;">⬇ CSV</a>
-          <button type="button" class="monits-pill-btn" style="font-size:0.65rem; padding:2px 7px;" onclick="document.getElementById('wifiImportFile').click()">⬆ Import</button>
-          <input type="file" id="wifiImportFile" accept=".json,.csv" style="display:none;" onchange="window.handleImportWifiFile(this)" />
+          <a href="/api/v1/wifi-survey/export?format=json" download="wifi_survey.json" class="monits-pill-btn"
+            style="font-size:0.65rem; padding:2px 7px; text-decoration:none;">⬇ JSON</a>
+          <a href="/api/v1/wifi-survey/export?format=csv" download="wifi_survey.csv" class="monits-pill-btn"
+            style="font-size:0.65rem; padding:2px 7px; text-decoration:none;">⬇ CSV</a>
+          <button type="button" class="monits-pill-btn" style="font-size:0.65rem; padding:2px 7px;"
+            onclick="document.getElementById('wifiImportFile').click()">⬆ Import</button>
+          <input type="file" id="wifiImportFile" accept=".json,.csv" style="display:none;"
+            onchange="window.handleImportWifiFile(this)" />
         </div>
       </div>
       <div id="wifiSurveyPointsList"></div>
@@ -849,7 +921,7 @@
     styleIntegratedPanel(true);
   });
 
-  window.saveCurrentBuildingNow = async function() {
+  window.saveCurrentBuildingNow = async function () {
     if (!window.monitsApi) return false;
     const btn = document.getElementById("monitPanel")?.shadowRoot?.getElementById("btnSavePlan");
     if (btn) btn.textContent = isId ? "⏳ Menyimpan..." : "⏳ Saving...";
@@ -863,16 +935,16 @@
     return ok;
   };
 
-  window.navigateWithSave = async function(targetUrl) {
+  window.navigateWithSave = async function (targetUrl) {
     try {
       if (window.monitsApi) {
         await window.monitsApi.saveBuildingNow();
       }
-    } catch (e) {}
+    } catch (e) { }
     window.location.href = targetUrl;
   };
 
-  window.switchUIMode = async function(mode) {
+  window.switchUIMode = async function (mode) {
     const panel = document.getElementById("monitPanel");
     if (!panel) return;
     if (panel._mode === "editor" && mode !== "editor" && window.monitsApi) {
@@ -882,12 +954,12 @@
     panel.requestUpdate();
   };
 
-  window.onCableZoneChange = function(val) {
+  window.onCableZoneChange = function (val) {
     const wrap = document.getElementById("customMountWrap");
     if (wrap) wrap.style.display = val === "custom" ? "flex" : "none";
   };
 
-  window.toggleMonitsDrawer = function(which) {
+  window.toggleMonitsDrawer = function (which) {
     const dev = document.getElementById("drawerDevices");
     const cab = document.getElementById("drawerCables");
     const wifi = document.getElementById("drawerWifiSurvey");
@@ -929,7 +1001,7 @@
     };
   }
 
-  window.onSensorFloorChange = function(floorId) {
+  window.onSensorFloorChange = function (floorId) {
     if (!window.monitsApi) return;
     const b = window.monitsApi.getBuilding();
     const fl = (b?.floors || []).find(f => f.id === floorId) || (b?.floors || [])[0];
@@ -945,7 +1017,7 @@
     }
   };
 
-  window.onSensorRoomChange = function(areaId) {
+  window.onSensorRoomChange = function (areaId) {
     if (!window.monitsApi) return;
     const floorId = document.getElementById("newSensorFloor")?.value;
     const b = window.monitsApi.getBuilding();
@@ -961,7 +1033,7 @@
     }
   };
 
-  window.onNewSensorTypeChange = function(sensorType) {
+  window.onNewSensorTypeChange = function (sensorType) {
     const t = (sensorType || "thermohygrometer").toLowerCase();
     const show = (id, vis) => {
       const el = document.getElementById(id);
@@ -974,7 +1046,7 @@
     show("wrapNewSensorVolt", t === "voltmeter");
   };
 
-  window.handleAddAndPlaceSensor = async function() {
+  window.handleAddAndPlaceSensor = async function () {
     if (!window.monitsApi) return;
     const name = document.getElementById("newSensorName")?.value || "Rack Sensor";
     const sensorType = document.getElementById("newSensorType")?.value || "thermohygrometer";
@@ -1090,7 +1162,7 @@
       try {
         const r = await fetch("/api/v1/data-sources");
         if (r.ok) window._cachedDataSources = await r.json();
-      } catch (e) {}
+      } catch (e) { }
     }
     const dsList = Array.isArray(window._cachedDataSources) ? window._cachedDataSources : [];
     if (dsSelect && dsSelect.options.length <= 1 && dsList.length > 0) {
@@ -1218,7 +1290,7 @@
     }
   }
 
-  window.onFocusSensorCard = function(identifier) {
+  window.onFocusSensorCard = function (identifier) {
     if (!window.monitsApi) return;
     window.monitsApi.setActiveSensor(identifier);
     const v3d = document.getElementById("monitPanel")?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
@@ -1229,7 +1301,7 @@
     }
   };
 
-  window.onVirtualLightToggle = async function(entityId, targetState) {
+  window.onVirtualLightToggle = async function (entityId, targetState) {
     if (!window.monitsApi) return;
     if (entityId.startsWith("light.")) {
       await window.monitsApi.setVirtualLight(entityId, { state: targetState });
@@ -1239,13 +1311,13 @@
     renderDevicesDrawer();
   };
 
-  window.onVirtualLightColor = async function(entityId, hexColor) {
+  window.onVirtualLightColor = async function (entityId, hexColor) {
     if (!window.monitsApi) return;
     await window.monitsApi.setVirtualLight(entityId, { state: "on", hexColor });
     renderDevicesDrawer();
   };
 
-  window.handleAddVirtualLight = async function() {
+  window.handleAddVirtualLight = async function () {
     if (!window.monitsApi) return;
     const name = document.getElementById("newLightName")?.value?.trim() || "Room Light";
     const x = document.getElementById("newLightX")?.value || 2.5;
@@ -1258,7 +1330,7 @@
     renderDevicesDrawer();
   };
 
-  window.onRenameVirtualLight = async function(entityId, safeId) {
+  window.onRenameVirtualLight = async function (entityId, safeId) {
     if (!window.monitsApi) return;
     const newName = document.getElementById(`inp_light_name_${safeId}`)?.value?.trim();
     if (!newName) return;
@@ -1266,7 +1338,7 @@
     renderDevicesDrawer();
   };
 
-  window.onDeleteVirtualLight = async function(entityId, name) {
+  window.onDeleteVirtualLight = async function (entityId, name) {
     if (!window.monitsApi) return;
     const msg = isId ? `Hapus lampu "${name}" dari 3D?` : `Delete light "${name}" from 3D floor plan?`;
     if (!confirm(msg)) return;
@@ -1274,7 +1346,7 @@
     renderDevicesDrawer();
   };
 
-  window.handleSyncAllSqlSensors = async function(btn) {
+  window.handleSyncAllSqlSensors = async function (btn) {
     if (!window.monitsApi) return;
     if (btn) { btn.disabled = true; btn.textContent = "⏳..."; }
     try {
@@ -1285,7 +1357,7 @@
     }
   };
 
-  window.onDeleteDbSensor = async function(identifier, name) {
+  window.onDeleteDbSensor = async function (identifier, name) {
     if (!window.monitsApi) return;
     const msg = isId
       ? `Hapus sensor "${name}" dari database dan denah 3D?`
@@ -1295,7 +1367,7 @@
     await renderDevicesDrawer();
   };
 
-  window.onSaveDbSensor = async function(identifier, areaId) {
+  window.onSaveDbSensor = async function (identifier, areaId) {
     if (!window.monitsApi) return;
     const newName = document.getElementById(`inp_name_${identifier}`)?.value?.trim() || undefined;
     const sensorType = document.getElementById(`inp_type_${identifier}`)?.value || "thermohygrometer";
@@ -1357,7 +1429,7 @@
     return `<span class="wifi-band-badge ${cls}" title="Band ${b}${chTxt}">${shortLbl}${chTxt}</span>`;
   }
 
-  window.onNewWifiBandChange = function(band) {
+  window.onNewWifiBandChange = function (band) {
     const chEl = document.getElementById("newWifiChannel");
     if (!chEl) return;
     if (band === "2.4GHz") chEl.value = 6;
@@ -1429,21 +1501,21 @@
     if (isWifiHeat) syncWifiSsidDropdowns();
   }
 
-  window.onWifiSsidFilterChange = function(ssid) {
+  window.onWifiSsidFilterChange = function (ssid) {
     if (!window.monitsApi) return;
     window.monitsApi.setSelectedWifiSsid(ssid || "");
     syncWifiSsidDropdowns();
     renderWifiSurveyDrawer();
   };
 
-  window.onWifiBandChannelFilterChange = function(val) {
+  window.onWifiBandChannelFilterChange = function (val) {
     if (!window.monitsApi) return;
     window.monitsApi.setWifiBandChannelFilter(val || "");
     syncWifiBandChannelDropdowns();
     renderWifiSurveyDrawer();
   };
 
-  window.activateWifiHeatmapIn3D = async function() {
+  window.activateWifiHeatmapIn3D = async function () {
     await window.switchUIMode("view");
     setTimeout(() => {
       const v3d = document.getElementById("monitPanel")?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
@@ -1456,7 +1528,7 @@
     }, 250);
   };
 
-  window.toggleWifiPointPicker = function() {
+  window.toggleWifiPointPicker = function () {
     wifiPickActive = !wifiPickActive;
     if (wifiPickActive && cablePickActive) window.toggleCablePointPicker();
     const btn = document.getElementById("btnPickWifiPoint");
@@ -1517,7 +1589,7 @@
     }
   }
 
-  window.handleAddWifiSurveyPoint = async function() {
+  window.handleAddWifiSurveyPoint = async function () {
     if (!window.monitsApi) return;
     const ssid = document.getElementById("newWifiSsid")?.value?.trim();
     const rssi_dbm = document.getElementById("newWifiRssi")?.value;
@@ -1541,7 +1613,7 @@
     }
   };
 
-  window.onSaveWifiSurveyPoint = async function(pointId, safeId) {
+  window.onSaveWifiSurveyPoint = async function (pointId, safeId) {
     if (!window.monitsApi) return;
     const ssid = document.getElementById(`inp_wssid_${safeId}`)?.value?.trim();
     const rssi_dbm = document.getElementById(`inp_wrssi_${safeId}`)?.value;
@@ -1554,13 +1626,13 @@
     renderWifiSurveyDrawer();
   };
 
-  window.onDeleteWifiSurveyPoint = async function(pointId) {
+  window.onDeleteWifiSurveyPoint = async function (pointId) {
     if (!window.monitsApi) return;
     await window.monitsApi.deleteWifiSurveyPoint(pointId);
     renderWifiSurveyDrawer();
   };
 
-  window.handleImportWifiFile = async function(input) {
+  window.handleImportWifiFile = async function (input) {
     const file = input?.files?.[0];
     if (!file || !window.monitsApi) return;
     const text = await file.text();
@@ -1610,7 +1682,7 @@
     `).join("");
   }
 
-  window.addCableWaypoint = function(x = null, z = null) {
+  window.addCableWaypoint = function (x = null, z = null) {
     const last = cableWaypoints.length > 0
       ? cableWaypoints[cableWaypoints.length - 1]
       : [Number(document.getElementById("cableX1")?.value || 2.2), Number(document.getElementById("cableZ1")?.value || 2.2)];
@@ -1621,16 +1693,16 @@
     renderCableWaypoints();
   };
 
-  window.updateCableWaypoint = function(idx, axis, val) {
+  window.updateCableWaypoint = function (idx, axis, val) {
     if (cableWaypoints[idx]) cableWaypoints[idx][axis] = Number(val);
   };
 
-  window.removeCableWaypoint = function(idx) {
+  window.removeCableWaypoint = function (idx) {
     cableWaypoints.splice(idx, 1);
     renderCableWaypoints();
   };
 
-  window.toggleCablePointPicker = function() {
+  window.toggleCablePointPicker = function () {
     cablePickActive = !cablePickActive;
     const btn = document.getElementById("btnPickCablePoints");
     const hint = document.getElementById("cablePickHint");
@@ -1718,7 +1790,7 @@
     }
   }
 
-  window.onSaveCableRun = async function(groupId, safeId) {
+  window.onSaveCableRun = async function (groupId, safeId) {
     if (!window.monitsApi) return;
     const name = document.getElementById(`inp_cable_name_${safeId}`)?.value?.trim();
     const mountY = document.getElementById(`inp_cable_y_${safeId}`)?.value;
@@ -1726,7 +1798,7 @@
     renderCablesDrawer();
   };
 
-  window.onDeleteCableRun = async function(groupId, name) {
+  window.onDeleteCableRun = async function (groupId, name) {
     if (!window.monitsApi) return;
     const msg = isId ? `Hapus jalur kabel "${name}" dari 3D?` : `Delete cable run "${name}" from 3D?`;
     if (!confirm(msg)) return;
@@ -1734,13 +1806,13 @@
     renderCablesDrawer();
   };
 
-  window.onToggleCableLayer = async function(layerId) {
+  window.onToggleCableLayer = async function (layerId) {
     if (!window.monitsApi) return;
     await window.monitsApi.toggleLayer(layerId);
     renderCablesDrawer();
   };
 
-  window.handleAddCableRun = async function() {
+  window.handleAddCableRun = async function () {
     if (!window.monitsApi) return;
     const cableType = document.getElementById("cableTypeSelect").value;
     const placementZone = document.getElementById("cableZoneSelect").value;
@@ -1777,7 +1849,7 @@
     }
   };
 
-  window.startNewFloorPlan = async function() {
+  window.startNewFloorPlan = async function () {
     const msg = isId
       ? "Buat denah fasilitas 3D baru dari awal? Denah baru akan langsung disimpan ke database."
       : "Start a new 3D facility layout from scratch? The new layout will be saved to the database.";
@@ -1825,21 +1897,21 @@
         const hass = await createNextFloorHass({
           lang: currentLang,
           isAdmin: {{ 'true' if current_user and current_user.is_admin else 'false' }},
-          username: "{{ current_user.username if current_user else 'Admin' }}"
-        });
+      username: "{{ current_user.username if current_user else 'Admin' }}"
+    });
 
-        panel.hass = hass;
-        panel.narrow = window.innerWidth < 870;
-        window.nfPanel = panel;
+    panel.hass = hass;
+    panel.narrow = window.innerWidth < 870;
+    window.nfPanel = panel;
 
-        setInterval(() => {
-          styleIntegratedPanel();
-          updateWifiSsidFloatingBar();
-        }, 250);
-      }
+    setInterval(() => {
+      styleIntegratedPanel();
+      updateWifiSsidFloatingBar();
+    }, 250);
+  }
     } catch (err) {
-      console.error("Failed to initialize 3D interface:", err);
-    }
+    console.error("Failed to initialize 3D interface:", err);
+  }
   }
 
   if (document.readyState === "loading") {
