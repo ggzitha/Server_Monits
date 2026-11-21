@@ -1559,7 +1559,7 @@
           const sigColor = p.rssi_dbm >= -55 ? "var(--accent-green)" : (p.rssi_dbm >= -70 ? "var(--accent-amber)" : "var(--accent-red)");
           const bandVal = p.band || "5GHz";
           const chVal = p.channel ?? "";
-          const isSelected = selObj && selObj.type === "wifi_point" && selObj.id === p.id;
+          const isSelected = selObj && (selObj.kind === "wifi_point" || selObj.type === "wifi_point") && selObj.id === p.id;
           return `
             <div class="monits-card-row" data-wifi-point-id="${p.id}" style="flex-direction:column; align-items:stretch; gap:5px; ${isSelected ? 'border-color:var(--accent-cyan); box-shadow:0 0 0 1px var(--accent-cyan);' : ''}">
               <div style="display:flex; gap:4px; align-items:center; flex-wrap:nowrap;">
@@ -1897,21 +1897,21 @@
         const hass = await createNextFloorHass({
           lang: currentLang,
           isAdmin: {{ 'true' if current_user and current_user.is_admin else 'false' }},
-      username: "{{ current_user.username if current_user else 'Admin' }}"
-    });
+          username: "{{ current_user.username if current_user else 'Admin' }}"
+        });
 
-    panel.hass = hass;
-    panel.narrow = window.innerWidth < 870;
-    window.nfPanel = panel;
+        panel.hass = hass;
+        panel.narrow = window.innerWidth < 870;
+        window.nfPanel = panel;
 
-    setInterval(() => {
-      styleIntegratedPanel();
-      updateWifiSsidFloatingBar();
-    }, 250);
-  }
+        setInterval(() => {
+          styleIntegratedPanel();
+          updateWifiSsidFloatingBar();
+        }, 250);
+      }
     } catch (err) {
-    console.error("Failed to initialize 3D interface:", err);
-  }
+      console.error("Failed to initialize 3D interface:", err);
+    }
   }
 
   if (document.readyState === "loading") {
