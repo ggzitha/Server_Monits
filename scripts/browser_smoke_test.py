@@ -578,6 +578,39 @@ def run_smoke_test():
                 raise RuntimeError("Expected unified .fp3d-app-header on /admin/audit")
             if page.evaluate("() => document.documentElement.dataset.theme") != "light":
                 raise RuntimeError("Expected Light theme to persist on /admin/audit!")
+            page.goto(f"{BASE_URL}/racks")
+            page.wait_for_selector("#racksAppRoot .rk-shell", timeout=8000)
+            if page.locator("header.fp3d-app-header").count() != 1:
+                raise RuntimeError("Expected unified .fp3d-app-header on /racks")
+            if page.evaluate("() => document.documentElement.dataset.theme") != "light":
+                raise RuntimeError("Expected Light theme to persist on /racks!")
+            # Create a 48U rack and mount a device from the Device Library on /racks
+            page.click("#rkToggleNew")
+            page.fill("#rkNewName", "AI-Rack-48U")
+            page.fill("#rkNewU", "48")
+            page.click("#rkSubmitNew")
+            page.wait_for_function("() => (document.querySelector('#racksAppRoot')?.innerText || '').includes('AI-Rack-48U')", timeout=8000)
+            page.locator("[data-quick-mount]").first.click()
+            page.wait_for_selector(".rk-dev-block", timeout=8000)
+            rk_check = page.evaluate("""() => {
+                const txt = (document.querySelector('#racksAppRoot')?.innerText || '').toLowerCase();
+                return {
+                    hasIframe: document.querySelectorAll('iframe').length,
+                    devCount: document.querySelectorAll('.rk-dev-block').length,
+                    hasFrontRear: txt.includes('front elevation') && txt.includes('rear elevation'),
+                    hasStats: txt.includes('u-space utilization') && txt.includes('total power draw')
+                };
+            }""")
+            if rk_check["hasIframe"] != 0 or rk_check["devCount"] < 1 or not rk_check["hasFrontRear"] or not rk_check["hasStats"]:
+                raise RuntimeError(f"Native Rack Elevation check failed: {rk_check}")
+            # Also verify Dark theme works cleanly on /racks
+            page.evaluate("() => window.applyAppTheme('neon', true)")
+            page.wait_for_timeout(200)
+            if page.evaluate("() => document.documentElement.dataset.theme") != "neon":
+                raise RuntimeError("Failed switching /racks to Dark (neon) theme!")
+            page.evaluate("() => window.applyAppTheme('light', true)")
+            page.wait_for_timeout(200)
+            print(f"  ✓ Native /racks Elevation View verified in Light & Dark themes (0 iframes, Front+Rear, 48U rack + mounted device): {rk_check}")
             page.goto(f"{BASE_URL}/")
             page.wait_for_selector("neonplan3d-panel", timeout=10000)
             page.wait_for_function("() => window.monitsApi && window.nfPanel && window.nfPanel.data && window.nfPanel.data.building", timeout=10000)

@@ -288,6 +288,7 @@
 <script src="/static/neonplan3d/basic-types.js"></script>
 <script src="/static/neonplan3d/pack-ids.js"></script>
 <script src="/static/neonplan3d/pack-names.js"></script>
+<script src="/static/js/rack_elevation.js?v=20261122c"></script>
 {% endblock %}
 
 {% block content %}
@@ -727,6 +728,21 @@
   </div>
 </aside>
 
+<!-- Drawer 4: Native Rack Elevation View & Device Library (Phase 5a) -->
+<aside id="drawerRacks" class="monits-drawer" style="width:min(1120px, calc(100vw - 32px));" aria-label="Rack Elevation & Device Library">
+  <div class="monits-drawer-header">
+    <div class="monits-drawer-title">
+      <span>🗄️</span>
+      <span>{{ _('nav_racks') }}</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <a href="/racks" class="monits-pill-btn" style="text-decoration:none; font-size:0.72rem; padding:3px 9px;">⤢ {{ 'Halaman Penuh' if current_lang == 'id' else 'Full Page' }}</a>
+      <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
+    </div>
+  </div>
+  <div class="monits-drawer-body" id="drawerRacksBody"></div>
+</aside>
+
 <script type="module">
   import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261122b";
 
@@ -959,33 +975,61 @@
     if (wrap) wrap.style.display = val === "custom" ? "flex" : "none";
   };
 
-  window.toggleMonitsDrawer = function (which) {
+  window.toggleMonitsDrawer = function (which, arg = null) {
     const dev = document.getElementById("drawerDevices");
     const cab = document.getElementById("drawerCables");
     const wifi = document.getElementById("drawerWifiSurvey");
+    const rks = document.getElementById("drawerRacks");
     if (which === "devices") {
       const opening = !dev.classList.contains("open");
       dev.classList.toggle("open", opening);
       cab.classList.remove("open");
       wifi?.classList.remove("open");
+      rks?.classList.remove("open");
       if (opening) renderDevicesDrawer();
     } else if (which === "cables") {
       const opening = !cab.classList.contains("open");
       cab.classList.toggle("open", opening);
       dev.classList.remove("open");
       wifi?.classList.remove("open");
+      rks?.classList.remove("open");
       if (opening) renderCablesDrawer();
     } else if (which === "wifi") {
       const opening = !wifi.classList.contains("open");
       wifi.classList.toggle("open", opening);
       dev.classList.remove("open");
       cab.classList.remove("open");
+      rks?.classList.remove("open");
       if (opening) renderWifiSurveyDrawer();
+    } else if (which === "racks") {
+      const opening = arg ? true : !rks.classList.contains("open");
+      rks.classList.toggle("open", opening);
+      dev.classList.remove("open");
+      cab.classList.remove("open");
+      wifi?.classList.remove("open");
+      if (opening && window.RackElevationUI) {
+        const body = document.getElementById("drawerRacksBody");
+        if (!window._drawerRackCtrl) {
+          window._drawerRackCtrl = window.RackElevationUI.mount(body, {
+            lang: currentLang,
+            rackId: arg || null,
+            canWrite: {{ 'true' if current_user and (current_user.is_admin or 'racks:write' in (current_user.permissions or [])) else 'false' }},
+            compact: false,
+          });
+        } else {
+          window._drawerRackCtrl.loadAll(arg || null);
+        }
+      }
     } else {
       dev.classList.remove("open");
       cab.classList.remove("open");
       wifi?.classList.remove("open");
+      rks?.classList.remove("open");
     }
+  };
+
+  window.openRackElevation = function (rackOrFurnitureId = null) {
+    window.toggleMonitsDrawer("racks", rackOrFurnitureId);
   };
 
   function computeRoomCenter(poly) {

@@ -163,6 +163,7 @@ export async function createNextFloorHass(options = {}) {
   let wifiApsCache = [];
   let wifiBandsCache = [];
   let wifiChannelsCache = [];
+  let racksCache = [];
   let selectedWifiSsid = ""; // "" = All Wi-Fi APs
   let selectedWifiBand = ""; // "" | "2.4GHz" | "5GHz" | "6GHz"
   let selectedWifiChannel = null; // number | null
@@ -2439,8 +2440,43 @@ export async function createNextFloorHass(options = {}) {
         return await res.json();
       }
       return null;
+    },
+    getRacks() {
+      return racksCache;
+    },
+    getRackByFurnitureId(fid) {
+      if (!fid) return null;
+      return racksCache.find(r => r.furniture_id === fid || r.id === fid) || null;
+    },
+    async refreshRacksFromDb() {
+      try {
+        const res = await fetch("/api/v1/racks");
+        if (res.ok) {
+          const data = await res.json();
+          racksCache = Array.isArray(data.racks) ? data.racks : [];
+        }
+        // Reload synchronized building JSON so newly created/updated racks appear immediately in 2D & 3D
+        const bRes = await fetch("/api/v1/sensors/building");
+        if (bRes.ok) {
+          const bData = await bRes.json();
+          if (bData?.saved && bData.building?.floors?.length) {
+            building = bData.building;
+            syncRoomsToAreas(building);
+            const panel = window.nfPanel;
+            if (panel?.data?.edit) {
+              panel.data.building = building;
+              panel.requestUpdate?.();
+            }
+            panel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d")?.requestUpdate?.();
+            panel?.shadowRoot?.querySelector("fp3d-editor")?.requestUpdate?.();
+          }
+        }
+      } catch (e) {}
+      window.dispatchEvent(new CustomEvent("monits-racks-changed", { detail: racksCache }));
+      return racksCache;
     }
   };
+  void window.monitsApi.refreshRacksFromDb();
 
   // Sync shared theme state into hass + Neon3D panel instantly on theme toggle
   window.addEventListener("monits-theme-changed", (ev) => {
@@ -2507,6 +2543,8 @@ export async function createNextFloorHass(options = {}) {
           pushHassToPanel();
         } else if (data.type === "wifi_survey_updated") {
           void window.monitsApi?.refreshWifiSurveyFromDb?.();
+        } else if (data.type === "rack_updated") {
+          void window.monitsApi?.refreshRacksFromDb?.();
         }
       } catch (e) {
         // ignore malformed packets

@@ -120,25 +120,36 @@ async def initialize_system(req: InitializeRequest):
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
 
-    # Test connection first
+    # Test connection & writability first
     success, msg = await test_database_connection(target_url)
     if not success:
         raise HTTPException(status_code=400, detail=f"Database connection failed: {msg}")
 
-    # 1. Persist DATABASE_URL to external .env file
+    prev_url = settings.DATABASE_URL
+    # 1. Reconfigure active database engine and create tables BEFORE persisting .env
+    engine = set_engine_url(target_url)
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+    except Exception as e:
+        if prev_url:
+            set_engine_url(prev_url)
+        err_str = str(e)
+        if "read-only" in err_str.lower() or "readonly" in err_str.lower():
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Cannot initialize schema: target database is in READ-ONLY mode. "
+                    "Please connect to a writable primary database (or disable default_transaction_read_only)."
+                ),
+            )
+        raise HTTPException(status_code=400, detail=f"Failed to create database schema: {err_str}")
+
+    # 2. Persist DATABASE_URL & Fernet key only after schema creation succeeded
     persist_env_variable("DATABASE_URL", target_url)
     settings.DATABASE_URL = target_url
-
-    # 2. Persist Fernet key if not already set
     if not settings.FERNET_KEY:
         settings.FERNET_KEY = get_or_generate_fernet_key()
-
-    # 3. Reconfigure active database engine
-    engine = set_engine_url(target_url)
-
-    # 4. Create all database tables (schema migration)
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
 
     # 5. Populate initial system roles, admin user, and preferences
     from backend.app.db.session import _session_factory

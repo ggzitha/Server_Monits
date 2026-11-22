@@ -9,6 +9,7 @@ from backend.app.db.models.placed_object import PlacedObject
 from backend.app.db.models.data_source import DataSource
 from backend.app.db.models.sensor import Sensor
 from backend.app.db.models.alert import Alert
+from backend.app.db.models.rack import Rack, RackDevice, RackDeviceTemplate
 
 __all__ = [
     "Base",
@@ -29,5 +30,8 @@ __all__ = [
     "DataSource",
     "Sensor",
     "Alert",
+    "Rack",
+    "RackDevice",
+    "RackDeviceTemplate",
 ]
 

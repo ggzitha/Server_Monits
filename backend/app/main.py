@@ -110,6 +110,13 @@ async def auto_initialize_from_env():
 async def lifespan(app: FastAPI):
     """Application startup & shutdown events."""
     load_translations()
+    engine = get_engine()
+    if engine is not None:
+        try:
+            async with engine.begin() as conn:
+                await conn.run_sync(Base.metadata.create_all)
+        except Exception as e:
+            logger.warning(f"Schema create_all skipped: {e}")
     await auto_initialize_from_env()
     yield
     # Shutdown
@@ -295,6 +302,20 @@ async def page_login(
     ctx = get_template_context(request, None)
     ctx["show_nav"] = False
     return templates.TemplateResponse(request=request, name="login.html", context=ctx)
+
+
+@app.get("/racks", response_class=HTMLResponse)
+async def page_racks(
+    request: Request,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Unified native Racks & Elevation View page."""
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    ctx = get_template_context(request, current_user)
+    ctx["active_tab"] = "racks"
+    return templates.TemplateResponse(request=request, name="racks.html", context=ctx)
 
 
 @app.get("/admin/users", response_class=HTMLResponse)

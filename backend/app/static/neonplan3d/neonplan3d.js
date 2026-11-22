@@ -4794,6 +4794,7 @@ background:#0b1120f2;color:#e6f7ff;border:1px solid #37e0ff66;border-radius:12px
             <button id="btnSavePlan" title="Save 3D Floor Plan to Database" @click=${()=>window.saveCurrentBuildingNow?.()}>💾 ${(this.hass?.language||"en").startsWith("id")?"Simpan":"Save"}</button>
             <button id="btnVirtualDb" title="DB Temp/Humidity Sensors & Virtual Lights" @click=${()=>window.toggleMonitsDrawer?.("devices")}>💡 ${(this.hass?.language||"en").startsWith("id")?"Sensor DB & Lampu":"DB Sensors & Lights"}</button>
             <button id="btnCablesMgr" title="3D Cabling (Below Floor / Wall / Ceiling)" @click=${()=>window.toggleMonitsDrawer?.("cables")}>🔌 ${(this.hass?.language||"en").startsWith("id")?"Kabel 3D":"3D Cables"}</button>
+            <button id="btnRacksMgr" title="Racks & Elevation View" @click=${()=>window.openRackElevation?.()}>🗄️ ${(this.hass?.language||"").startsWith("id")?"Rak":"Racks"}</button>
             <button id="btnWifiSurvey" title="Wi-Fi RSSI Survey & AP Heatmap" @click=${()=>window.toggleMonitsDrawer?.("wifi")}>📶 ${(this.hass?.language||"en").startsWith("id")?"Survei Wi-Fi":"Wi-Fi Survey"}</button>
           </div>`:y}
           <span class="fp3d-grow"></span>

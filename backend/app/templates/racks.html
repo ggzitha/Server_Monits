@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('nav_racks') }} - {{ _('app_name') }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:1rem;">
+  <div>
+    <h2 style="color:var(--accent-cyan); font-size:1.35rem; margin:0 0 2px 0;">🗄️ {{ _('nav_racks') }}</h2>
+    <p style="color:var(--text-muted); font-size:0.82rem; margin:0;">
+      {{ _('rack_page_subtitle') }}
+    </p>
+  </div>
+  <a href="/" class="btn btn-secondary btn-sm">← {{ _('nav_dashboard') }}</a>
+</div>
+
+<div id="racksAppRoot"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/rack_elevation.js?v=20261122c"></script>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const initialRackId = params.get("rack") || null;
+  const canWriteRacks = {{ 'true' if current_user and (current_user.is_admin or 'racks:write' in (current_user.permissions or [])) else 'false' }};
+  window._racksCtrl = window.RackElevationUI.mount(document.getElementById("racksAppRoot"), {
+    lang: "{{ current_lang|default('en') }}",
+    rackId: initialRackId,
+    canWrite: canWriteRacks,
+    compact: false,
+  });
+</script>
+{% endblock %}

@@ -127,6 +127,22 @@ async def test_database_connection(url: str) -> Tuple[bool, str]:
         )
         async with test_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
+            if norm_url.startswith("postgresql"):
+                ro_val = (await conn.execute(text("SHOW transaction_read_only"))).scalar()
+                in_rec = (await conn.execute(text("SELECT pg_is_in_recovery()"))).scalar()
+                if str(ro_val).lower() == "on" or bool(in_rec):
+                    return (
+                        False,
+                        "Target PostgreSQL database is READ-ONLY (read-replica or default_transaction_read_only=on). "
+                        "Connect to a writable primary PostgreSQL server or run: ALTER DATABASE <db> SET default_transaction_read_only = off;",
+                    )
+            elif norm_url.startswith("mysql"):
+                ro_val = (await conn.execute(text("SELECT @@read_only"))).scalar()
+                if str(ro_val) in ("1", "ON", "True", "true"):
+                    return (
+                        False,
+                        "Target MySQL/MariaDB database is READ-ONLY (@@read_only=1). Connect to a writable primary database.",
+                    )
         return True, "Connection successful"
     except Exception as e:
         return False, str(e)

@@ -83,6 +83,15 @@
   "properties": "Properties",
   "dimensions": "Dimensions",
   "position": "Position",
-  "rotation": "Rotation"
+  "rotation": "Rotation",
+  "rack_page_subtitle": "Manage 4U–70U racks, interactive front/rear U-space elevations, drag-and-drop hardware, power utilization, and device templates.",
+  "rack_elevation": "Rack Elevation",
+  "rack_front": "Front Elevation",
+  "rack_rear": "Rear Elevation",
+  "rack_device_library": "Device Library",
+  "rack_utilization": "U-Space Utilization",
+  "rack_power_budget": "Power Draw",
+  "rack_new": "New Rack",
+  "rack_import_netbox": "Import NetBox YAML/JSON"
 }
 

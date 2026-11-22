@@ -83,6 +83,15 @@
   "properties": "Properti",
   "dimensions": "Dimensi",
   "position": "Posisi",
-  "rotation": "Rotasi"
+  "rotation": "Rotasi",
+  "rack_page_subtitle": "Kelola rak 4U–70U, tampilan elevasi depan/belakang interaktif, perangkat seret-dan-lepas, penggunaan daya, dan pustaka perangkat.",
+  "rack_elevation": "Elevasi Rak",
+  "rack_front": "Tampak Depan",
+  "rack_rear": "Tampak Belakang",
+  "rack_device_library": "Pustaka Perangkat",
+  "rack_utilization": "Penggunaan Ruang U",
+  "rack_power_budget": "Konsumsi Daya",
+  "rack_new": "Rak Baru",
+  "rack_import_netbox": "Impor NetBox YAML/JSON"
 }
 
