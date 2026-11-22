@@ -306,8 +306,15 @@
   }
 
   @keyframes monitsWallFadeIn {
-    from { opacity: 0; transform: scale(0.985); }
-    to { opacity: 1; transform: scale(1); }
+    from {
+      opacity: 0;
+      transform: scale(0.985);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
 
   .fp3d-wall.monits-rack-wall .fp3d-wall-head {
@@ -485,13 +492,11 @@
     font-size: 10.5px;
     font-weight: 600;
     color: var(--text-muted);
-    background: repeating-linear-gradient(
-      -45deg,
-      rgba(148, 163, 184, 0.16),
-      rgba(148, 163, 184, 0.16) 6px,
-      rgba(15, 23, 42, 0.22) 6px,
-      rgba(15, 23, 42, 0.22) 12px
-    );
+    background: repeating-linear-gradient(-45deg,
+        rgba(148, 163, 184, 0.16),
+        rgba(148, 163, 184, 0.16) 6px,
+        rgba(15, 23, 42, 0.22) 6px,
+        rgba(15, 23, 42, 0.22) 12px);
     border: 1px dashed var(--border-color);
     padding: 0 6px;
     overflow: hidden;
@@ -739,8 +744,10 @@
         <label>
           <span>{{ 'Warna Kabel' if current_lang == 'id' else 'Cable Color' }}</span>
           <div style="display:flex; gap:6px; align-items:center;">
-            <input id="cableColorInput" type="color" value="#ef4444" class="monits-input" style="width:46px; height:28px; padding:2px; cursor:pointer;" />
-            <label style="display:inline-flex; flex-direction:row; align-items:center; gap:5px; font-size:0.7rem; color:var(--text-main); cursor:pointer;">
+            <input id="cableColorInput" type="color" value="#ef4444" class="monits-input"
+              style="width:46px; height:28px; padding:2px; cursor:pointer;" />
+            <label
+              style="display:inline-flex; flex-direction:row; align-items:center; gap:5px; font-size:0.7rem; color:var(--text-main); cursor:pointer;">
               <input id="cableSnapTray" type="checkbox" checked />
               <span>{{ 'Snap ke Tray' if current_lang == 'id' else 'Snap to Tray' }}</span>
             </label>
@@ -792,12 +799,14 @@
       <!-- Optional Rack & Device Endpoint Linking (auto-fills X/Z & computes 3D drop length) -->
       <div class="monits-subcard" style="margin-top:8px; padding:8px;">
         <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600; margin-bottom:6px;">
-          🔗 {{ 'Tautan Endpoint Rak / Perangkat (Opsional)' if current_lang == 'id' else 'Link Rack / Device Endpoints (Optional)' }}
+          🔗 {{ 'Tautan Endpoint Rak / Perangkat (Opsional)' if current_lang == 'id' else 'Link Rack / Device Endpoints
+          (Optional)' }}
         </div>
         <div class="monits-form-grid">
           <label>
             <span>{{ 'Dari Rak' if current_lang == 'id' else 'From Rack' }}</span>
-            <select id="cableFromRack" class="monits-input" onchange="window.onCableEndpointRackChange('from', this.value)">
+            <select id="cableFromRack" class="monits-input"
+              onchange="window.onCableEndpointRackChange('from', this.value)">
               <option value="">-- {{ 'Manual (X1, Z1)' if current_lang == 'id' else 'Manual (X1, Z1)' }} --</option>
             </select>
           </label>
@@ -2481,28 +2490,28 @@
 
   async function init() {
     try {
-      await import("/static/neonplan3d/neonplan3d.js?v=20261122g");
+      await import("/static/neonplan3d/neonplan3d.js?v=20261122f");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {
         const hass = await createNextFloorHass({
           lang: currentLang,
           isAdmin: {{ 'true' if current_user and current_user.is_admin else 'false' }},
-          username: "{{ current_user.username if current_user else 'Admin' }}"
-        });
+      username: "{{ current_user.username if current_user else 'Admin' }}"
+    });
 
-        panel.hass = hass;
-        panel.narrow = window.innerWidth < 870;
-        window.nfPanel = panel;
+    panel.hass = hass;
+    panel.narrow = window.innerWidth < 870;
+    window.nfPanel = panel;
 
-        setInterval(() => {
-          styleIntegratedPanel();
-          updateWifiSsidFloatingBar();
-        }, 250);
-      }
+    setInterval(() => {
+      styleIntegratedPanel();
+      updateWifiSsidFloatingBar();
+    }, 250);
+  }
     } catch (err) {
-      console.error("Failed to initialize 3D interface:", err);
-    }
+    console.error("Failed to initialize 3D interface:", err);
+  }
   }
 
   if (document.readyState === "loading") {
