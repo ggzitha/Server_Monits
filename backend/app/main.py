@@ -115,6 +115,20 @@ async def lifespan(app: FastAPI):
         try:
             async with engine.begin() as conn:
                 await conn.run_sync(Base.metadata.create_all)
+                # Ensure Phase 5 rack image columns exist on pre-existing dev databases
+                for tbl, col_ddl in [
+                    ("rack_devices", "is_full_depth BOOLEAN NOT NULL DEFAULT 1"),
+                    ("rack_devices", "slug VARCHAR(140) NOT NULL DEFAULT ''"),
+                    ("rack_devices", "front_image VARCHAR(300) NOT NULL DEFAULT ''"),
+                    ("rack_devices", "rear_image VARCHAR(300) NOT NULL DEFAULT ''"),
+                    ("rack_device_templates", "slug VARCHAR(140) NOT NULL DEFAULT ''"),
+                    ("rack_device_templates", "front_image VARCHAR(300) NOT NULL DEFAULT ''"),
+                    ("rack_device_templates", "rear_image VARCHAR(300) NOT NULL DEFAULT ''"),
+                ]:
+                    try:
+                        await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col_ddl}"))
+                    except Exception:
+                        pass
         except Exception as e:
             logger.warning(f"Schema create_all skipped: {e}")
     await auto_initialize_from_env()

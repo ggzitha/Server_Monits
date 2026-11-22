@@ -1,21 +1,34 @@
 /**
- * rack_elevation.js - Native, Theme-Aware Interactive Rack Elevation View & Device Library (Phase 5a)
+ * rack_elevation.js - Native Rack Elevation View, Photorealistic Front/Rear Hardware Images,
+ * Brand/Category/A-Z Device Library & .fp3d-wall 3D Popup (Phase 5).
  *
- * Shared by both `/racks` page and the slide-over Rack Elevation Drawer inside `/` (2D Editor & 3D View).
- * Uses ONLY app CSS theme variables (--bg-*, --text-*, --accent-*, --border-*). Zero iframes, zero external CSS.
+ * - 100% native UI using app CSS theme variables (--bg-*, --text-*, --accent-*, --border-*).
+ * - Zero iframes, zero external runtime requests.
+ * - Real front & rear hardware WebP photos (MikroTik, Sangfor, Supermicro, Dell, HPE, Juniper,
+ *   Cisco, Ubiquiti, APC, Fortinet, Arista, Palo Alto, Synology, QNAP, Eaton, etc.) + custom image upload.
+ * - Diagonal hatched half-depth opposite-face indicator + Image / Image+Label / Label toggle + Zoom.
  */
 (function () {
   const RACK_TEMPLATES_U = [4, 6, 9, 12, 18, 24, 36, 42, 48, 52, 60, 70];
   const DEVICE_TYPES = [
     { value: "server", en: "Server", id: "Server", icon: "🖥️", color: "#0284c7" },
-    { value: "switch", en: "Switch", id: "Switch", icon: "🔀", color: "#059669" },
-    { value: "patch_panel", en: "Patch Panel", id: "Patch Panel", icon: "🔌", color: "#475569" },
-    { value: "pdu", en: "PDU", id: "PDU", icon: "⚡", color: "#d97706" },
-    { value: "ups", en: "UPS", id: "UPS", icon: "🔋", color: "#dc2626" },
+    { value: "switch", en: "Network / Switch", id: "Jaringan / Switch", icon: "🔀", color: "#059669" },
     { value: "storage", en: "Storage", id: "Penyimpanan", icon: "💾", color: "#7c3aed" },
+    { value: "ups", en: "UPS", id: "UPS", icon: "🔋", color: "#dc2626" },
+    { value: "pdu", en: "PDU / Power", id: "PDU / Daya", icon: "⚡", color: "#d97706" },
+    { value: "patch_panel", en: "Patch Panel", id: "Patch Panel", icon: "🔌", color: "#475569" },
     { value: "blank_panel", en: "Blank Panel", id: "Panel Kosong", icon: "▬", color: "#64748b" },
-    { value: "custom", en: "Custom", id: "Kustom", icon: "📦", color: "#db2777" },
+    { value: "custom", en: "Custom / Appliance", id: "Kustom / Perangkat", icon: "📦", color: "#db2777" },
   ];
+
+  let _sharedCatalogPromise = null;
+  async function fetchSharedCatalog(force = false) {
+    if (!force && _sharedCatalogPromise) return _sharedCatalogPromise;
+    _sharedCatalogPromise = fetch("/api/v1/racks/library/catalog")
+      .then((r) => (r.ok ? r.json() : { brands: [], devices: [] }))
+      .catch(() => ({ brands: [], devices: [] }));
+    return _sharedCatalogPromise;
+  }
 
   function getCsrf() {
     const meta = document.querySelector('meta[name="csrf-token"]');
@@ -78,22 +91,53 @@
     const style = document.createElement("style");
     style.id = "monits-rack-elevation-css";
     style.textContent = `
+      /* Native .fp3d-wall Glass Rack Popup Overlay (matches Neon3D camera wall style) */
+      .fp3d-rack-wall {
+        position: fixed;
+        inset: 56px 14px 14px 14px;
+        z-index: 2600;
+        display: none;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px 16px;
+        border-radius: 16px;
+        background: var(--bg-drawer);
+        backdrop-filter: blur(18px);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--card-shadow), 0 0 28px var(--accent-cyan-soft);
+        color: var(--text-main);
+        overflow: hidden;
+      }
+      .fp3d-rack-wall.open { display: flex; }
+      .fp3d-rack-wall-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-color);
+      }
+      .fp3d-rack-wall-body {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+
+      /* Shared Rack Elevation Layout */
       .rk-shell {
         display: grid;
-        grid-template-columns: 270px 1fr 290px;
+        grid-template-columns: 310px 1fr;
         gap: 14px;
         align-items: start;
         color: var(--text-main);
         font-family: var(--font-sans);
       }
-      .rk-shell.rk-compact {
+      .rk-shell.rk-view-only {
         grid-template-columns: 1fr;
       }
-      @media (max-width: 1120px) {
-        .rk-shell { grid-template-columns: 240px 1fr; }
-        .rk-col-lib { grid-column: 1 / -1; }
-      }
-      @media (max-width: 780px) {
+      @media (max-width: 960px) {
         .rk-shell { grid-template-columns: 1fr; }
       }
       .rk-panel {
@@ -116,6 +160,33 @@
         align-items: center;
         justify-content: space-between;
         gap: 8px;
+        flex-wrap: wrap;
+      }
+      .rk-tabs {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 4px;
+        background: var(--bg-app);
+        padding: 3px;
+        border-radius: 8px;
+        border: 1px solid var(--border-subtle);
+        margin-bottom: 8px;
+      }
+      .rk-tab {
+        border: none;
+        background: transparent;
+        color: var(--text-muted);
+        padding: 5px 6px;
+        border-radius: 6px;
+        font-size: 0.73rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+      }
+      .rk-tab.active {
+        background: var(--accent-cyan-soft);
+        color: var(--accent-cyan);
+        box-shadow: inset 0 0 0 1px var(--border-color);
       }
       .rk-rack-item {
         display: flex;
@@ -155,13 +226,14 @@
         color: var(--accent-cyan);
         padding: 5px 10px;
         border-radius: 999px;
-        font-size: 0.75rem;
+        font-size: 0.74rem;
         font-weight: 600;
         cursor: pointer;
         white-space: nowrap;
         transition: all 0.15s;
       }
       .rk-btn:hover { filter: brightness(1.1); }
+      .rk-btn:disabled { opacity: 0.45; cursor: not-allowed; }
       .rk-btn.primary {
         background: var(--accent-cyan);
         color: var(--text-on-accent);
@@ -173,7 +245,7 @@
       }
       .rk-stats {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
         gap: 10px;
         margin-bottom: 12px;
       }
@@ -197,58 +269,75 @@
         background: var(--accent-cyan);
         transition: width 0.25s ease;
       }
+      .rk-stage {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        overflow-x: auto;
+        padding: 6px 0 12px 0;
+      }
       .rk-elev-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 14px;
+        grid-template-columns: minmax(280px, 420px) minmax(280px, 420px);
+        gap: 22px;
+        transform-origin: top center;
+        transition: transform 0.15s ease;
       }
-      @media (max-width: 680px) {
-        .rk-elev-grid { grid-template-columns: 1fr; }
+      @media (max-width: 720px) {
+        .rk-elev-grid { grid-template-columns: minmax(260px, 1fr); }
       }
       .rk-cabinet {
-        background: var(--bg-app);
-        border: 2px solid var(--border-color);
-        border-radius: 10px;
+        background: var(--bg-surface-elevated);
+        border: 8px solid var(--bg-header);
+        outline: 1px solid var(--border-color);
+        border-radius: 6px;
         overflow: hidden;
+        box-shadow: var(--card-shadow);
       }
       .rk-cabinet-head {
         background: var(--bg-header);
-        color: var(--accent-cyan);
-        font-size: 0.75rem;
+        color: var(--text-muted);
+        font-size: 0.74rem;
         font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.06em;
+        letter-spacing: 0.1em;
         padding: 6px 10px;
-        border-bottom: 1px solid var(--border-color);
+        text-align: center;
+        border-bottom: 1px solid var(--border-subtle);
         display: flex;
         justify-content: space-between;
         align-items: center;
       }
       .rk-u-grid {
         display: grid;
-        grid-template-columns: 36px 1fr 1fr;
-        grid-auto-rows: 26px;
+        grid-template-columns: 30px 1fr 1fr;
+        grid-auto-rows: var(--rk-u-px, 28px);
         position: relative;
+        background: var(--bg-app);
       }
       .rk-u-num {
         grid-column: 1;
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.68rem;
+        font-size: 0.67rem;
         font-family: var(--font-mono);
         color: var(--text-muted);
-        border-right: 1px solid var(--border-subtle);
+        border-right: 2px dotted var(--border-subtle);
         border-bottom: 1px solid var(--border-subtle);
         background: var(--bg-card-inner);
         user-select: none;
       }
+      .rk-u-num.major {
+        color: var(--text-main);
+        font-weight: 700;
+      }
       .rk-u-slot {
-        border-bottom: 1px dashed var(--border-subtle);
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.64rem;
+        font-size: 0.62rem;
         color: transparent;
         transition: background 0.12s;
         cursor: pointer;
@@ -258,17 +347,47 @@
         color: var(--accent-cyan);
       }
       .rk-u-slot.drop-ok {
-        background: rgba(34, 197, 94, 0.24) !important;
+        background: rgba(34, 197, 94, 0.28) !important;
         outline: 1px solid var(--accent-green);
       }
       .rk-u-slot.drop-bad {
-        background: rgba(239, 68, 68, 0.26) !important;
+        background: rgba(239, 68, 68, 0.3) !important;
         outline: 1px solid var(--accent-red);
       }
+      /* Photorealistic Hardware Block */
       .rk-dev-block {
         z-index: 3;
-        margin: 1px 2px;
-        border-radius: 5px;
+        position: relative;
+        margin: 0.5px 1px;
+        border-radius: 3px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        overflow: hidden;
+        cursor: grab;
+        user-select: none;
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.16);
+      }
+      .rk-dev-block:active { cursor: grabbing; }
+      .rk-dev-block.selected {
+        outline: 2px solid var(--accent-cyan);
+        outline-offset: 0px;
+        z-index: 5;
+      }
+      .rk-dev-img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: fill;
+        display: block;
+        pointer-events: none;
+      }
+      .rk-dev-overlay {
+        position: relative;
+        z-index: 2;
+        width: 100%;
+        height: 100%;
         padding: 2px 7px;
         display: flex;
         align-items: center;
@@ -277,15 +396,19 @@
         font-size: 0.72rem;
         font-weight: 600;
         color: #ffffff;
-        cursor: grab;
-        overflow: hidden;
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.22);
-        user-select: none;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.92), 0 0 6px rgba(0, 0, 0, 0.8);
       }
-      .rk-dev-block:active { cursor: grabbing; }
-      .rk-dev-block.selected {
-        outline: 2px solid var(--accent-cyan);
-        outline-offset: 1px;
+      .rk-dev-overlay.img-only {
+        background: transparent;
+        opacity: 0;
+        transition: opacity 0.15s;
+      }
+      .rk-dev-block:hover .rk-dev-overlay.img-only {
+        opacity: 1;
+        background: rgba(5, 10, 22, 0.62);
+      }
+      .rk-dev-overlay.img-label {
+        background: linear-gradient(90deg, rgba(5,10,22,0.72) 0%, rgba(5,10,22,0.22) 60%, rgba(5,10,22,0.68) 100%);
       }
       .rk-dev-dot {
         width: 7px;
@@ -294,21 +417,85 @@
         flex-shrink: 0;
         box-shadow: 0 0 6px currentColor;
       }
+      /* Half-depth opposite-face hatched occlusion (exact Rackula style!) */
+      .rk-dev-halfdepth {
+        z-index: 2;
+        margin: 0.5px 1px;
+        border-radius: 2px;
+        background: repeating-linear-gradient(
+          -45deg,
+          rgba(148, 163, 184, 0.14),
+          rgba(148, 163, 184, 0.14) 6px,
+          rgba(15, 23, 42, 0.18) 6px,
+          rgba(15, 23, 42, 0.18) 12px
+        );
+        border: 1px dashed var(--border-subtle);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        pointer-events: none;
+        padding: 0 6px;
+        text-align: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      /* Brand Accordion & Device Palette */
+      .rk-brand-group {
+        border: 1px solid var(--border-subtle);
+        border-radius: 8px;
+        margin-bottom: 6px;
+        overflow: hidden;
+        background: var(--bg-card-inner);
+      }
+      .rk-brand-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 7px 10px;
+        font-size: 0.78rem;
+        font-weight: 700;
+        color: var(--text-main);
+        cursor: pointer;
+        user-select: none;
+        background: var(--bg-surface-elevated);
+      }
+      .rk-brand-head:hover { color: var(--accent-cyan); }
       .rk-tpl-item {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 6px;
+        gap: 7px;
         padding: 6px 8px;
-        border-radius: 7px;
-        background: var(--bg-card-inner);
-        border: 1px solid var(--border-subtle);
-        margin-bottom: 5px;
-        font-size: 0.74rem;
+        border-top: 1px solid var(--border-subtle);
+        font-size: 0.73rem;
         cursor: grab;
+        background: var(--bg-card-inner);
       }
       .rk-tpl-item:hover {
-        border-color: var(--accent-cyan);
+        background: var(--accent-cyan-soft);
+      }
+      .rk-tpl-thumb {
+        width: 52px;
+        height: 18px;
+        border-radius: 3px;
+        object-fit: cover;
+        background: var(--bg-app);
+        border: 1px solid var(--border-subtle);
+        flex-shrink: 0;
+      }
+      .rk-u-pill {
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 1px 6px;
+        border-radius: 999px;
+        background: var(--bg-surface-elevated);
+        color: var(--text-main);
+        border: 1px solid var(--border-subtle);
+        white-space: nowrap;
       }
       .rk-alert {
         padding: 7px 10px;
@@ -339,6 +526,18 @@
         gap: 3px;
         color: var(--text-muted);
       }
+      .rk-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 10px;
+        padding: 5px 10px;
+        background: var(--bg-card-inner);
+        border: 1px solid var(--border-subtle);
+        border-radius: 999px;
+      }
     `;
     document.head.appendChild(style);
   }
@@ -348,18 +547,29 @@
       this.container = container;
       this.lang = opts.lang || document.documentElement.lang || "en";
       this.isId = this.lang === "id";
-      this.compact = Boolean(opts.compact);
       this.canWrite = opts.canWrite !== false;
+      this.popupMode = Boolean(opts.popupMode); // true = opened from clicking a rack in 3D view (.fp3d-wall)
+      this.editSidebarOpen = !this.popupMode;
       this.racks = [];
-      this.templates = [];
+      this.catalog = [];
       this.selectedRackId = opts.rackId || null;
       this.selectedDeviceId = null;
       this.dragPayload = null;
-      this.banner = null; // { kind: 'ok'|'err', text: '' }
+      this.banner = null;
+
+      // Rackula-inspired sidebar state
+      this.sidebarMode = "devices"; // "racks" | "devices"
+      this.deviceSortTab = "brand"; // "brand" | "category" | "az"
       this.libFilter = "";
+      this.expandedGroups = new Set(["MikroTik", "Sangfor", "Dell", "HPE", "Supermicro", "Ubiquiti", "Generic"]);
+      this.displayMode = "image"; // "image" | "image-label" | "label"
+      this.zoomPct = 100;
+
       this.showNewRack = false;
       this.showNewTpl = false;
       this.showNetbox = false;
+      this.pendingFrontImgUrl = "";
+      this.pendingRearImgUrl = "";
       this.undoStack = [];
       this.redoStack = [];
       injectStyles();
@@ -374,20 +584,18 @@
       this.render();
     }
 
-    async loadAll(selectRackId = null) {
+    async loadAll(selectRackId = null, forceCatalog = false) {
       try {
-        const [rRes, tRes] = await Promise.all([
+        const [rRes, catData] = await Promise.all([
           fetch("/api/v1/racks"),
-          fetch("/api/v1/racks/library/templates"),
+          fetchSharedCatalog(forceCatalog),
         ]);
         if (rRes.ok) {
           const data = await rRes.json();
           this.racks = data.racks || [];
         }
-        if (tRes.ok) {
-          const tData = await tRes.json();
-          this.templates = tData.templates || [];
-        }
+        this.catalog = catData.devices || [];
+
         if (selectRackId) {
           const found = this.racks.find((r) => r.id === selectRackId || r.furniture_id === selectRackId);
           if (found) this.selectedRackId = found.id;
@@ -415,6 +623,23 @@
       try {
         await window.monitsApi?.refreshRacksFromDb?.();
       } catch (e) {}
+    }
+
+    async uploadCustomImage(file, side) {
+      const fd = new FormData();
+      fd.append("file", file);
+      fd.append("side", side);
+      const res = await fetch("/api/v1/racks/library/upload-image", {
+        method: "POST",
+        headers: { "X-CSRF-Token": getCsrf() },
+        body: fd,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        this.setBanner("err", data.detail || "Image upload failed");
+        return "";
+      }
+      return data.url || "";
     }
 
     async createRack(payload) {
@@ -470,7 +695,7 @@
       }
       this.selectedDeviceId = data.id;
       await this.loadAll(rackId);
-      this.setBanner("ok", this.t(`Mounted "${data.name}" at U${data.u_position} (${data.face}).`, `"${data.name}" dipasang di U${data.u_position} (${data.face}).`));
+      this.setBanner("ok", this.t(`Mounted "${data.name}" at U${data.u_position}.`, `"${data.name}" dipasang di U${data.u_position}.`));
       await this.notifyPlanSync();
       return data;
     }
@@ -557,12 +782,15 @@
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        this.setBanner("err", data.detail || "Failed to save template");
+        this.setBanner("err", data.detail || "Failed to save custom device");
         return;
       }
       this.showNewTpl = false;
-      await this.loadAll(this.selectedRackId);
-      this.setBanner("ok", this.t(`Saved template "${data.name}".`, `Templat "${data.name}" tersimpan.`));
+      this.pendingFrontImgUrl = "";
+      this.pendingRearImgUrl = "";
+      this.expandedGroups.add(data.manufacturer || "Custom");
+      await this.loadAll(this.selectedRackId, true);
+      this.setBanner("ok", this.t(`Added custom device "${data.name}" to library.`, `Perangkat kustom "${data.name}" ditambahkan ke pustaka.`));
     }
 
     async importNetbox(rawText) {
@@ -577,24 +805,25 @@
         return;
       }
       this.showNetbox = false;
-      await this.loadAll(this.selectedRackId);
+      await this.loadAll(this.selectedRackId, true);
       this.setBanner("ok", this.t(`Imported ${data.imported} device type(s) into library.`, `Berhasil mengimpor ${data.imported} tipe perangkat ke pustaka.`));
     }
 
     renderElevationFace(rack, face) {
       const uMax = rack.u_height;
-      const faceTitle = face === "front" ? this.t("Front Elevation", "Tampak Depan") : this.t("Rear Elevation", "Tampak Belakang");
-      const devs = (rack.devices || []).filter((d) => d.face === face || d.face === "both");
+      const faceTitle = face === "front" ? this.t("FRONT", "DEPAN") : this.t("REAR", "BELAKANG");
+      const allDevs = rack.devices || [];
 
       let cells = "";
       for (let u = uMax; u >= 1; u--) {
         const row = uMax - u + 1;
-        cells += `<div class="rk-u-num" style="grid-row:${row};">U${u}</div>`;
+        const isMajor = u % 5 === 0 || u === 1 || u === uMax;
+        cells += `<div class="rk-u-num ${isMajor ? "major" : ""}" style="grid-row:${row};">${u}</div>`;
         cells += `<div class="rk-u-slot" data-face="${face}" data-u="${u}" data-slot="left" style="grid-row:${row}; grid-column:2;">+ U${u}</div>`;
         cells += `<div class="rk-u-slot" data-face="${face}" data-u="${u}" data-slot="right" style="grid-row:${row}; grid-column:3;">+ U${u}</div>`;
       }
 
-      for (const d of devs) {
+      for (const d of allDevs) {
         const topU = Math.min(uMax, d.u_position + d.u_height - 1);
         const startRow = uMax - topU + 1;
         const endRow = startRow + d.u_height;
@@ -602,51 +831,156 @@
         if (d.half_width) {
           colSpec = d.half_slot === "right" ? "3 / 4" : "2 / 3";
         }
+
+        const isShownHere = d.face === face || d.face === "both";
+        const isOppositeHalfDepth = !isShownHere && d.face !== "both" && !d.is_full_depth;
+
+        if (isOppositeHalfDepth) {
+          // Exact Rackula diagonal hatched block on the opposite face for half-depth devices!
+          const sideLbl = d.face === "front" ? this.t("front, half depth", "depan, setengah") : this.t("rear, half depth", "belakang, setengah");
+          cells += `
+            <div class="rk-dev-halfdepth" style="grid-row:${startRow} / ${endRow}; grid-column:${colSpec};"
+                 title="${esc(d.name)} (${sideLbl})">
+              ${esc(d.name)} (${sideLbl})
+            </div>
+          `;
+          continue;
+        }
+        if (!isShownHere) continue;
+
         const meta = typeMeta(d.device_type);
         const isSel = this.selectedDeviceId === d.id;
+        const imgUrl = face === "rear"
+          ? (d.rear_image || (d.face === "rear" ? d.front_image : ""))
+          : (d.front_image || "");
+        const showImg = this.displayMode !== "label" && Boolean(imgUrl);
+        const overlayClass = showImg
+          ? (this.displayMode === "image" ? "img-only" : "img-label")
+          : "";
+
         cells += `
           <div class="rk-dev-block ${isSel ? "selected" : ""}"
                draggable="${this.canWrite ? "true" : "false"}"
                data-dev-id="${esc(d.id)}"
                style="grid-row:${startRow} / ${endRow}; grid-column:${colSpec}; background:${esc(d.color || meta.color)};"
-               title="${esc(d.name)} · ${d.u_height}U (U${d.u_position}-U${topU}) · ${d.power_w}W · ${d.status}">
-            <span style="display:flex; align-items:center; gap:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              <span class="rk-dev-dot" style="background:${statusColor(d.status)}; color:${statusColor(d.status)};"></span>
-              <span>${meta.icon}</span>
-              <span style="overflow:hidden; text-overflow:ellipsis;">${esc(d.name)}</span>
-            </span>
-            <span style="font-size:0.65rem; opacity:0.9; white-space:nowrap; flex-shrink:0;">
-              ${d.u_height}U${d.power_w > 0 ? ` · ${Math.round(d.power_w)}W` : ""}
-            </span>
+               title="${esc(d.name)} · ${esc(d.manufacturer)} ${esc(d.model)} · ${d.u_height}U (U${d.u_position}–U${topU}) · ${d.power_w}W · ${d.status}">
+            ${showImg ? `<img class="rk-dev-img" src="${esc(imgUrl)}" alt="${esc(d.name)}" loading="lazy" />` : ""}
+            <div class="rk-dev-overlay ${overlayClass}">
+              <span style="display:flex; align-items:center; gap:5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                <span class="rk-dev-dot" style="background:${statusColor(d.status)}; color:${statusColor(d.status)};"></span>
+                <span style="overflow:hidden; text-overflow:ellipsis;">${esc(d.name)}</span>
+              </span>
+              <span style="font-size:0.64rem; opacity:0.92; white-space:nowrap; flex-shrink:0;">
+                ${d.u_height}U${d.power_w > 0 ? ` · ${Math.round(d.power_w)}W` : ""}
+              </span>
+            </div>
           </div>
         `;
       }
+
+      const emptyHint = allDevs.length === 0 && face === "front"
+        ? `<div style="position:absolute; inset:0; display:grid; place-items:center; pointer-events:none; color:var(--text-muted); font-size:0.78rem; text-align:center; padding:12px;">${this.t("Empty rack.<br/>Drag a device in from the library.", "Rak kosong.<br/>Seret perangkat dari pustaka.")}</div>`
+        : "";
 
       return `
         <div class="rk-cabinet">
           <div class="rk-cabinet-head">
             <span>${faceTitle}</span>
-            <span>${uMax}U · ${rack.width_in}"</span>
+            <span style="font-size:0.66rem; opacity:0.8;">${uMax}U · ${rack.width_in}"</span>
           </div>
-          <div class="rk-u-grid">${cells}</div>
+          <div class="rk-u-grid" style="--rk-u-px:${uMax > 48 ? 22 : 28}px;">
+            ${cells}
+            ${emptyHint}
+          </div>
         </div>
       `;
+    }
+
+    renderDeviceCatalogList(rack) {
+      const q = this.libFilter.trim().toLowerCase();
+      let items = this.catalog;
+      if (q) {
+        items = items.filter(
+          (d) =>
+            (d.brand || "").toLowerCase().includes(q) ||
+            (d.model || "").toLowerCase().includes(q) ||
+            (d.name || "").toLowerCase().includes(q) ||
+            (d.device_type || "").toLowerCase().includes(q) ||
+            (d.slug || "").toLowerCase().includes(q)
+        );
+      }
+
+      const renderRow = (d) => {
+        const displayName = d.name || d.model || d.slug;
+        const depthTag = d.is_full_depth ? "" : " ½D";
+        const widthTag = d.half_width ? " ½W" : "";
+        return `
+          <div class="rk-tpl-item" draggable="${this.canWrite ? "true" : "false"}" data-cat-slug="${esc(d.slug)}">
+            ${d.front_image ? `<img class="rk-tpl-thumb" src="${esc(d.front_image)}" alt="" loading="lazy" />` : `<span class="rk-tpl-thumb" style="background:${esc(d.color)};"></span>`}
+            <div style="flex:1; min-width:0;">
+              <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(d.brand)} ${esc(displayName)}">${esc(displayName)}</div>
+              <div style="font-size:0.64rem; color:var(--text-muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                ${esc(d.brand)}${d.rear_image ? " · 📷 Front+Rear" : ""}${depthTag}${widthTag}
+              </div>
+            </div>
+            <span class="rk-u-pill">${d.u_height}U</span>
+            ${this.canWrite && rack ? `<button type="button" class="rk-btn" style="padding:2px 7px;" data-quick-mount-slug="${esc(d.slug)}" title="${this.t("Mount at first free U", "Pasang di U kosong pertama")}">+</button>` : ""}
+          </div>
+        `;
+      };
+
+      if (this.deviceSortTab === "az") {
+        const sorted = [...items].sort((a, b) => (a.model || a.name || "").localeCompare(b.model || b.name || "")).slice(0, 120);
+        return sorted.length
+          ? `<div class="rk-brand-group">${sorted.map(renderRow).join("")}</div>`
+          : `<div style="font-size:0.76rem; color:var(--text-muted); padding:10px;">${this.t("No matching devices.", "Tidak ada perangkat yang cocok.")}</div>`;
+      }
+
+      const groups = new Map();
+      for (const d of items) {
+        const key = this.deviceSortTab === "category"
+          ? this.t(typeMeta(d.device_type).en, typeMeta(d.device_type).id)
+          : (d.brand || "Generic");
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(d);
+      }
+
+      // Put priority enterprise brands near the top when searching isn't active
+      const priority = ["MikroTik", "Sangfor", "Supermicro", "Dell", "HPE", "Juniper", "Ubiquiti", "Cisco", "Fortinet", "Palo Alto", "Arista", "APC", "Eaton", "Synology", "QNAP", "Generic"];
+      const keys = [...groups.keys()].sort((a, b) => {
+        if (this.deviceSortTab === "brand") {
+          const ia = priority.indexOf(a), ib = priority.indexOf(b);
+          if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+        }
+        return a.localeCompare(b);
+      });
+
+      if (!keys.length) {
+        return `<div style="font-size:0.76rem; color:var(--text-muted); padding:10px;">${this.t("No matching devices.", "Tidak ada perangkat yang cocok.")}</div>`;
+      }
+
+      return keys
+        .map((k) => {
+          const arr = groups.get(k);
+          const isOpen = Boolean(q) || this.expandedGroups.has(k);
+          // Show devices with real photos first inside each brand
+          const ordered = [...arr].sort((a, b) => Number(!!b.rear_image) - Number(!!a.rear_image) || Number(!!b.has_real_image) - Number(!!a.has_real_image) || (a.model || "").localeCompare(b.model || ""));
+          return `
+            <div class="rk-brand-group">
+              <div class="rk-brand-head" data-toggle-group="${esc(k)}">
+                <span>${isOpen ? "▾" : "▸"} ${esc(k)}</span>
+                <span style="font-size:0.68rem; color:var(--text-muted);">(${arr.length})</span>
+              </div>
+              ${isOpen ? `<div>${ordered.slice(0, 60).map(renderRow).join("")}</div>` : ""}
+            </div>
+          `;
+        })
+        .join("");
     }
 
     render() {
       const rack = this.activeRack;
       const dev = this.activeDevice;
-      const filteredTpls = this.templates.filter((tpl) => {
-        if (!this.libFilter) return true;
-        const q = this.libFilter.toLowerCase();
-        return (
-          tpl.name.toLowerCase().includes(q) ||
-          tpl.device_type.toLowerCase().includes(q) ||
-          (tpl.manufacturer || "").toLowerCase().includes(q) ||
-          (tpl.model || "").toLowerCase().includes(q)
-        );
-      });
-
       const bannerHtml = this.banner
         ? `<div class="rk-alert ${this.banner.kind === "err" ? "err" : "ok"}">${esc(this.banner.text)}</div>`
         : "";
@@ -686,30 +1020,12 @@
                 <span>${this.t("Custom U (4–70)", "Kustom U (4–70)")}</span>
                 <input id="rkNewU" type="number" min="4" max="70" value="42" class="rk-input" />
               </label>
-              <label>
-                <span>${this.t("Width (in)", "Lebar (inci)")}</span>
-                <input id="rkNewWidth" type="number" step="0.5" min="10" max="30" value="19" class="rk-input" />
-              </label>
-              <label>
-                <span>${this.t("Depth (mm)", "Kedalaman (mm)")}</span>
-                <input id="rkNewDepth" type="number" step="50" min="300" max="1600" value="1000" class="rk-input" />
-              </label>
-              <label>
-                <span>${this.t("Max Power (W)", "Daya Maks (W)")}</span>
-                <input id="rkNewPower" type="number" step="100" value="5000" class="rk-input" />
-              </label>
-              <label>
-                <span>${this.t("Color", "Warna")}</span>
-                <input id="rkNewColor" type="color" value="#1e293b" class="rk-input" style="height:30px; padding:2px;" />
-              </label>
-              <label>
-                <span>X (m)</span>
-                <input id="rkNewX" type="number" step="0.2" value="2.5" class="rk-input" />
-              </label>
-              <label>
-                <span>Z (m)</span>
-                <input id="rkNewZ" type="number" step="0.2" value="2.0" class="rk-input" />
-              </label>
+              <label><span>${this.t("Width (in)", "Lebar (inci)")}</span><input id="rkNewWidth" type="number" step="0.5" min="10" max="30" value="19" class="rk-input" /></label>
+              <label><span>${this.t("Depth (mm)", "Kedalaman (mm)")}</span><input id="rkNewDepth" type="number" step="50" min="300" max="1600" value="1000" class="rk-input" /></label>
+              <label><span>${this.t("Max Power (W)", "Daya Maks (W)")}</span><input id="rkNewPower" type="number" step="100" value="5000" class="rk-input" /></label>
+              <label><span>${this.t("Color", "Warna")}</span><input id="rkNewColor" type="color" value="#1e293b" class="rk-input" style="height:30px; padding:2px;" /></label>
+              <label><span>X (m)</span><input id="rkNewX" type="number" step="0.2" value="2.5" class="rk-input" /></label>
+              <label><span>Z (m)</span><input id="rkNewZ" type="number" step="0.2" value="2.0" class="rk-input" /></label>
             </div>
             <div style="display:flex; gap:6px; justify-content:flex-end; margin-top:8px;">
               <button type="button" class="rk-btn" id="rkCancelNew">${this.t("Cancel", "Batal")}</button>
@@ -719,14 +1035,88 @@
         `
         : "";
 
-      let centerHtml = `<div class="rk-panel" style="text-align:center; padding:32px; color:var(--text-muted);">${this.t("Select or create a rack to view its elevation.", "Pilih atau buat rak untuk melihat tampilan elevasinya.")}</div>`;
+      const newTplHtml = this.showNewTpl
+        ? `
+          <div style="background:var(--bg-card-inner); border:1px solid var(--border-color); border-radius:8px; padding:9px; margin-bottom:8px;">
+            <div class="rk-form-grid">
+              <label style="grid-column:span 2;"><span>${this.t("Device Model / Name", "Nama / Model Perangkat")}</span><input id="tplName" class="rk-input" placeholder="e.g. Sangfor NGAF M5600 / Custom Server" /></label>
+              <label><span>${this.t("Brand / Manufacturer", "Merek / Pabrikan")}</span><input id="tplMfr" class="rk-input" placeholder="e.g. Sangfor, MikroTik" /></label>
+              <label><span>${this.t("Category", "Kategori")}</span>
+                <select id="tplType" class="rk-select">${DEVICE_TYPES.map((dt) => `<option value="${dt.value}">${dt.icon} ${this.t(dt.en, dt.id)}</option>`).join("")}</select>
+              </label>
+              <label><span>${this.t("Height (U)", "Tinggi (U)")}</span><input id="tplU" type="number" min="1" max="70" value="1" class="rk-input" /></label>
+              <label><span>${this.t("Power (W)", "Daya (W)")}</span><input id="tplPower" type="number" min="0" value="150" class="rk-input" /></label>
+              <label><span>${this.t("Front Photo (PNG/JPG/WebP)", "Foto Depan")}</span><input id="tplFrontFile" type="file" accept=".png,.jpg,.jpeg,.webp" class="rk-input" style="font-size:0.68rem;" /></label>
+              <label><span>${this.t("Rear Photo (Optional)", "Foto Belakang (Opsional)")}</span><input id="tplRearFile" type="file" accept=".png,.jpg,.jpeg,.webp" class="rk-input" style="font-size:0.68rem;" /></label>
+            </div>
+            <div style="display:flex; gap:5px; justify-content:flex-end; margin-top:7px;">
+              <button type="button" class="rk-btn" id="tplCancel">${this.t("Cancel", "Batal")}</button>
+              <button type="button" class="rk-btn primary" id="tplSave">${this.t("Save Custom Device", "Simpan Perangkat")}</button>
+            </div>
+          </div>
+        `
+        : "";
+
+      const netboxHtml = this.showNetbox
+        ? `
+          <div style="background:var(--bg-card-inner); border:1px solid var(--border-color); border-radius:8px; padding:8px; margin-bottom:8px;">
+            <div style="font-size:0.71rem; color:var(--text-muted); margin-bottom:5px;">
+              ${this.t("Paste NetBox Device-Type YAML/JSON (imported natively into our DB):", "Tempel YAML/JSON Tipe Perangkat NetBox (diimpor ke DB kita):")}
+            </div>
+            <textarea id="nbRawData" rows="4" class="rk-textarea" style="font-family:var(--font-mono); font-size:0.7rem;" placeholder="manufacturer: Cisco&#10;model: Catalyst 9300-48P&#10;u_height: 1&#10;is_full_depth: false"></textarea>
+            <div style="display:flex; gap:5px; justify-content:flex-end; margin-top:6px;">
+              <button type="button" class="rk-btn" id="nbCancel">${this.t("Cancel", "Batal")}</button>
+              <button type="button" class="rk-btn primary" id="nbSubmit">⬆ ${this.t("Import", "Impor")}</button>
+            </div>
+          </div>
+        `
+        : "";
+
+      const sidebarHtml = this.editSidebarOpen
+        ? `
+          <div class="rk-panel" style="display:flex; flex-direction:column; max-height:calc(100vh - 120px);">
+            <div class="rk-tabs" style="grid-template-columns:1fr 1fr;">
+              <button type="button" class="rk-tab ${this.sidebarMode === "racks" ? "active" : ""}" data-sb-mode="racks">🗄️ ${this.t("Racks", "Rak")} (${this.racks.length})</button>
+              <button type="button" class="rk-tab ${this.sidebarMode === "devices" ? "active" : ""}" data-sb-mode="devices">📦 ${this.t("Devices", "Perangkat")} (${this.catalog.length})</button>
+            </div>
+            ${this.sidebarMode === "racks" ? `
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:0.74rem; color:var(--text-muted);">${this.t("4U–70U Rack Templates", "Templat Rak 4U–70U")}</span>
+                ${this.canWrite ? `<button type="button" class="rk-btn primary" id="rkToggleNew">+ ${this.t("New Rack", "Rak Baru")}</button>` : ""}
+              </div>
+              ${newRackFormHtml}
+              <div style="overflow-y:auto; flex:1;">${racksListHtml}</div>
+            ` : `
+              <div class="rk-tabs">
+                <button type="button" class="rk-tab ${this.deviceSortTab === "brand" ? "active" : ""}" data-sort-tab="brand">${this.t("Brand", "Merek")}</button>
+                <button type="button" class="rk-tab ${this.deviceSortTab === "category" ? "active" : ""}" data-sort-tab="category">${this.t("Category", "Kategori")}</button>
+                <button type="button" class="rk-tab ${this.deviceSortTab === "az" ? "active" : ""}" data-sort-tab="az">A–Z</button>
+              </div>
+              <input id="rkLibSearch" class="rk-input" style="margin-bottom:8px;" placeholder="${this.t("Search MikroTik, Sangfor, Dell, HPE, Juniper...", "Cari MikroTik, Sangfor, Dell, HPE, Juniper...")}" value="${esc(this.libFilter)}" />
+              ${newTplHtml}
+              ${netboxHtml}
+              <div style="overflow-y:auto; flex:1; padding-right:2px;">
+                ${this.renderDeviceCatalogList(rack)}
+              </div>
+              ${this.canWrite ? `
+                <div style="display:flex; gap:6px; margin-top:8px; padding-top:8px; border-top:1px solid var(--border-subtle);">
+                  <button type="button" class="rk-btn primary" style="flex:1;" id="rkToggleNewTpl">+ ${this.t("Add custom device", "Tambah kustom")}</button>
+                  <button type="button" class="rk-btn" id="rkToggleNetbox">⬆ NetBox</button>
+                </div>
+              ` : ""}
+            `}
+          </div>
+        `
+        : "";
+
+      let centerHtml = `<div class="rk-panel" style="text-align:center; padding:32px; color:var(--text-muted);">${this.t("Select or create a rack to view its front & rear hardware elevation.", "Pilih atau buat rak untuk melihat elevasi perangkat depan & belakang.")}</div>`;
       if (rack) {
         const u = rack.utilization || {};
         const devEditorHtml = dev
           ? `
             <div style="margin-top:12px; background:var(--bg-card-inner); border:1px solid var(--border-color); border-radius:10px; padding:10px 12px;">
               <div class="rk-title" style="margin-bottom:8px;">
-                <span>✏️ ${this.t("Edit Mounted Device", "Ubah Perangkat Terpasang")}</span>
+                <span>✏️ ${this.t("Edit Mounted Device", "Ubah Perangkat Terpasang")} — ${esc(dev.name)}</span>
                 <div style="display:flex; gap:5px;">
                   ${this.canWrite ? `<button type="button" class="rk-btn danger" id="rkBtnDelDev">🗑️ ${this.t("Remove", "Hapus")}</button>` : ""}
                   <button type="button" class="rk-btn" id="rkBtnCloseDev">✕</button>
@@ -734,7 +1124,7 @@
               </div>
               <div class="rk-form-grid">
                 <label style="grid-column:span 2;"><span>${this.t("Device Name", "Nama Perangkat")}</span><input id="edDevName" class="rk-input" value="${esc(dev.name)}" /></label>
-                <label><span>${this.t("Type", "Tipe")}</span>
+                <label><span>${this.t("Category", "Kategori")}</span>
                   <select id="edDevType" class="rk-select">
                     ${DEVICE_TYPES.map((dt) => `<option value="${dt.value}" ${dt.value === dev.device_type ? "selected" : ""}>${dt.icon} ${this.t(dt.en, dt.id)}</option>`).join("")}
                   </select>
@@ -748,11 +1138,11 @@
                 <label><span>${this.t("Model", "Model")}</span><input id="edDevModel" class="rk-input" value="${esc(dev.model)}" /></label>
                 <label><span>${this.t("Position (Bottom U)", "Posisi (U Bawah)")}</span><input id="edDevPos" type="number" min="1" max="${rack.u_height}" class="rk-input" value="${dev.u_position}" /></label>
                 <label><span>${this.t("Height (U)", "Tinggi (U)")}</span><input id="edDevH" type="number" min="1" max="${rack.u_height}" class="rk-input" value="${dev.u_height}" /></label>
-                <label><span>${this.t("Face", "Sisi")}</span>
+                <label><span>${this.t("Face / Depth", "Sisi / Kedalaman")}</span>
                   <select id="edDevFace" class="rk-select">
-                    <option value="front" ${dev.face === "front" ? "selected" : ""}>${this.t("Front", "Depan")}</option>
-                    <option value="rear" ${dev.face === "rear" ? "selected" : ""}>${this.t("Rear", "Belakang")}</option>
-                    <option value="both" ${dev.face === "both" ? "selected" : ""}>${this.t("Full Depth (Both)", "Penuh (Depan & Belakang)")}</option>
+                    <option value="both" ${dev.face === "both" ? "selected" : ""}>${this.t("Full Depth (Front + Rear)", "Penuh (Depan + Belakang)")}</option>
+                    <option value="front" ${dev.face === "front" ? "selected" : ""}>${this.t("Front (Half Depth)", "Depan (Setengah)")}</option>
+                    <option value="rear" ${dev.face === "rear" ? "selected" : ""}>${this.t("Rear (Half Depth)", "Belakang (Setengah)")}</option>
                   </select>
                 </label>
                 <label><span>${this.t("Width Slot", "Slot Lebar")}</span>
@@ -763,7 +1153,9 @@
                   </select>
                 </label>
                 <label><span>${this.t("Power Draw (W)", "Daya (W)")}</span><input id="edDevPower" type="number" step="5" min="0" class="rk-input" value="${dev.power_w}" /></label>
-                <label><span>${this.t("Color", "Warna")}</span><input id="edDevColor" type="color" class="rk-input" style="height:30px; padding:2px;" value="${esc(dev.color || "#0284c7")}" /></label>
+                <label><span>${this.t("Fallback Color", "Warna Cadangan")}</span><input id="edDevColor" type="color" class="rk-input" style="height:30px; padding:2px;" value="${esc(dev.color || "#0284c7")}" /></label>
+                <label><span>${this.t("Front Image URL", "URL Foto Depan")}</span><input id="edDevFrontImg" class="rk-input" value="${esc(dev.front_image)}" placeholder="/static/rack_assets/..." /></label>
+                <label><span>${this.t("Rear Image URL", "URL Foto Belakang")}</span><input id="edDevRearImg" class="rk-input" value="${esc(dev.rear_image)}" placeholder="/static/rack_assets/..." /></label>
                 <label style="grid-column:span 2;"><span>${this.t("Serial Number", "Nomor Seri")}</span><input id="edDevSerial" class="rk-input" value="${esc(dev.serial)}" /></label>
                 <label style="grid-column:span 2;"><span>${this.t("Notes", "Catatan")}</span><textarea id="edDevNotes" rows="2" class="rk-textarea">${esc(dev.notes)}</textarea></label>
               </div>
@@ -777,8 +1169,9 @@
             <div class="rk-title">
               <span>🗄️ ${esc(rack.name)} (${rack.u_height}U · ${rack.width_in}" · ${rack.depth_mm}mm)</span>
               <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
-                <button type="button" class="rk-btn" id="rkUndoBtn" ${this.undoStack.length ? "" : "disabled"}>↶ ${this.t("Undo", "Batal")}</button>
-                <button type="button" class="rk-btn" id="rkRedoBtn" ${this.redoStack.length ? "" : "disabled"}>↷ ${this.t("Redo", "Ulangi")}</button>
+                ${this.popupMode ? `<button type="button" class="rk-btn ${this.editSidebarOpen ? "primary" : ""}" id="rkToggleEditSidebar">${this.editSidebarOpen ? "✕ " + this.t("Hide Library", "Tutup Pustaka") : "✏️ " + this.t("Edit / Add Devices", "Edit / Tambah Perangkat")}</button>` : ""}
+                <button type="button" class="rk-btn" id="rkUndoBtn" ${this.undoStack.length ? "" : "disabled"} title="Undo">↶</button>
+                <button type="button" class="rk-btn" id="rkRedoBtn" ${this.redoStack.length ? "" : "disabled"} title="Redo">↷</button>
                 <a href="/api/v1/racks/export" download="racks_export.json" class="rk-btn" style="text-decoration:none;">⬇ JSON</a>
               </div>
             </div>
@@ -801,104 +1194,31 @@
                 <div style="font-size:0.68rem; color:var(--text-muted); margin-top:3px;">${u.power_percent || 0}% ${this.t("of rack budget", "dari kapasitas rak")}</div>
               </div>
             </div>
-            <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:8px;">
-              ${this.t("Drag devices from the Library or within the rack onto any U slot. Click a device to edit.", "Seret perangkat dari Pustaka atau di dalam rak ke slot U mana saja. Klik perangkat untuk mengedit.")}
-            </div>
-            <div class="rk-elev-grid">
-              ${this.renderElevationFace(rack, "front")}
-              ${this.renderElevationFace(rack, "rear")}
+
+            <div class="rk-stage">
+              <div class="rk-elev-grid" style="transform:scale(${this.zoomPct / 100});">
+                ${this.renderElevationFace(rack, "front")}
+                ${this.renderElevationFace(rack, "rear")}
+              </div>
+              <div class="rk-toolbar">
+                <button type="button" class="rk-btn" id="rkZoomOut" title="Zoom Out">−</button>
+                <span style="font-size:0.72rem; font-weight:700; min-width:42px; text-align:center;">${this.zoomPct}%</span>
+                <button type="button" class="rk-btn" id="rkZoomIn" title="Zoom In">+</button>
+                <span style="width:1px; height:16px; background:var(--border-subtle); margin:0 2px;"></span>
+                <button type="button" class="rk-btn ${this.displayMode === "image" ? "primary" : ""}" data-disp-mode="image" title="Photorealistic Hardware Images">🖼️ ${this.t("Image", "Gambar")}</button>
+                <button type="button" class="rk-btn ${this.displayMode === "image-label" ? "primary" : ""}" data-disp-mode="image-label" title="Image + Labels">🖼️+T</button>
+                <button type="button" class="rk-btn ${this.displayMode === "label" ? "primary" : ""}" data-disp-mode="label" title="Color-Coded Labels Only">T</button>
+              </div>
             </div>
             ${devEditorHtml}
           </div>
         `;
       }
 
-      const newTplHtml = this.showNewTpl
-        ? `
-          <div style="background:var(--bg-card-inner); border:1px solid var(--border-color); border-radius:8px; padding:8px; margin-bottom:8px;">
-            <div class="rk-form-grid">
-              <label style="grid-column:span 2;"><span>${this.t("Template Name", "Nama Templat")}</span><input id="tplName" class="rk-input" placeholder="Dell PowerEdge R750" /></label>
-              <label><span>${this.t("Type", "Tipe")}</span>
-                <select id="tplType" class="rk-select">${DEVICE_TYPES.map((dt) => `<option value="${dt.value}">${dt.icon} ${this.t(dt.en, dt.id)}</option>`).join("")}</select>
-              </label>
-              <label><span>${this.t("Height (U)", "Tinggi (U)")}</span><input id="tplU" type="number" min="1" max="70" value="2" class="rk-input" /></label>
-              <label><span>${this.t("Manufacturer", "Pabrikan")}</span><input id="tplMfr" class="rk-input" placeholder="Dell" /></label>
-              <label><span>${this.t("Power (W)", "Daya (W)")}</span><input id="tplPower" type="number" min="0" value="450" class="rk-input" /></label>
-            </div>
-            <div style="display:flex; gap:5px; justify-content:flex-end; margin-top:7px;">
-              <button type="button" class="rk-btn" id="tplCancel">${this.t("Cancel", "Batal")}</button>
-              <button type="button" class="rk-btn primary" id="tplSave">${this.t("Save", "Simpan")}</button>
-            </div>
-          </div>
-        `
-        : "";
-
-      const netboxHtml = this.showNetbox
-        ? `
-          <div style="background:var(--bg-card-inner); border:1px solid var(--border-color); border-radius:8px; padding:8px; margin-bottom:8px;">
-            <div style="font-size:0.72rem; color:var(--text-muted); margin-bottom:5px;">
-              ${this.t("Paste NetBox Device-Type YAML or JSON (imported as native templates in our DB):", "Tempel YAML atau JSON Tipe Perangkat NetBox (diimpor sebagai templat asli di DB kita):")}
-            </div>
-            <textarea id="nbRawData" rows="5" class="rk-textarea" style="font-family:var(--font-mono); font-size:0.7rem;" placeholder="manufacturer: Cisco&#10;model: Catalyst 9300-48P&#10;u_height: 1&#10;is_full_depth: false"></textarea>
-            <div style="display:flex; gap:5px; justify-content:flex-end; margin-top:6px;">
-              <button type="button" class="rk-btn" id="nbCancel">${this.t("Cancel", "Batal")}</button>
-              <button type="button" class="rk-btn primary" id="nbSubmit">⬆ ${this.t("Import", "Impor")}</button>
-            </div>
-          </div>
-        `
-        : "";
-
       this.container.innerHTML = `
-        <div class="rk-shell ${this.compact ? "rk-compact" : ""}">
-          <!-- Left: Rack List & 4U-70U Creator -->
-          <div class="rk-panel">
-            <div class="rk-title">
-              <span>🗄️ ${this.t("Racks", "Daftar Rak")} (${this.racks.length})</span>
-              ${this.canWrite ? `<button type="button" class="rk-btn primary" id="rkToggleNew">+ ${this.t("New Rack", "Rak Baru")}</button>` : ""}
-            </div>
-            ${newRackFormHtml}
-            ${racksListHtml}
-          </div>
-
-          <!-- Center: Interactive Front/Rear Elevation -->
+        <div class="rk-shell ${this.editSidebarOpen ? "" : "rk-view-only"}">
+          ${sidebarHtml}
           <div>${centerHtml}</div>
-
-          <!-- Right: Device Library & NetBox Importer -->
-          <div class="rk-panel rk-col-lib">
-            <div class="rk-title">
-              <span>📚 ${this.t("Device Library", "Pustaka Perangkat")}</span>
-              ${this.canWrite ? `
-                <div style="display:flex; gap:4px;">
-                  <button type="button" class="rk-btn" id="rkToggleNewTpl">+ ${this.t("Custom", "Kustom")}</button>
-                  <button type="button" class="rk-btn" id="rkToggleNetbox">⬆ NetBox</button>
-                </div>
-              ` : ""}
-            </div>
-            ${newTplHtml}
-            ${netboxHtml}
-            <input id="rkLibSearch" class="rk-input" style="margin-bottom:8px;" placeholder="${this.t("Search device templates...", "Cari templat perangkat...")}" value="${esc(this.libFilter)}" />
-            <div style="max-height:520px; overflow-y:auto;">
-              ${filteredTpls
-                .map((tpl) => {
-                  const m = typeMeta(tpl.device_type);
-                  return `
-                    <div class="rk-tpl-item" draggable="${this.canWrite ? "true" : "false"}" data-tpl-id="${esc(tpl.id)}">
-                      <div style="overflow:hidden;">
-                        <div style="font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                          <span style="display:inline-block; width:8px; height:8px; border-radius:2px; background:${esc(tpl.color || m.color)}; margin-right:4px;"></span>
-                          ${m.icon} ${esc(tpl.name)}
-                        </div>
-                        <div style="font-size:0.66rem; color:var(--text-muted);">
-                          ${tpl.u_height}U${tpl.half_width ? " · ½W" : ""} · ${Math.round(tpl.power_w || 0)}W${tpl.manufacturer ? ` · ${esc(tpl.manufacturer)}` : ""}
-                        </div>
-                      </div>
-                      ${this.canWrite && rack ? `<button type="button" class="rk-btn" style="padding:2px 7px;" data-quick-mount="${esc(tpl.id)}" title="${this.t("Mount at first free U", "Pasang di U kosong pertama")}">+</button>` : ""}
-                    </div>
-                  `;
-                })
-                .join("")}
-            </div>
-          </div>
         </div>
       `;
 
@@ -929,10 +1249,82 @@
       return null;
     }
 
+    buildMountPayloadFromCatalog(item, uPos, face, halfSlot) {
+      const displayName = item.name || `${item.brand && item.brand !== "Generic" ? item.brand + " " : ""}${item.model}`;
+      const isFull = item.is_full_depth !== false;
+      return {
+        name: displayName.slice(0, 120),
+        device_type: item.device_type || "server",
+        manufacturer: item.brand || item.manufacturer || "",
+        model: item.model || displayName,
+        slug: item.slug || "",
+        u_height: item.u_height || 1,
+        u_position: uPos,
+        face: isFull ? "both" : face,
+        is_full_depth: isFull,
+        half_width: Boolean(item.half_width),
+        half_slot: item.half_width ? (halfSlot || "left") : "full",
+        power_w: Number(item.power_w || 0),
+        status: "active",
+        color: item.color || typeMeta(item.device_type).color,
+        front_image: item.front_image || "",
+        rear_image: item.rear_image || "",
+      };
+    }
+
     bindEvents() {
       const root = this.container;
       const rack = this.activeRack;
 
+      // Sidebar mode tabs (Racks / Devices)
+      root.querySelectorAll("[data-sb-mode]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          this.sidebarMode = btn.dataset.sbMode;
+          this.render();
+        });
+      });
+
+      // Device sort tabs (Brand / Category / A-Z)
+      root.querySelectorAll("[data-sort-tab]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          this.deviceSortTab = btn.dataset.sortTab;
+          this.render();
+        });
+      });
+
+      // Brand / Category group accordions
+      root.querySelectorAll("[data-toggle-group]").forEach((hdr) => {
+        hdr.addEventListener("click", () => {
+          const g = hdr.dataset.toggleGroup;
+          if (this.expandedGroups.has(g)) this.expandedGroups.delete(g);
+          else this.expandedGroups.add(g);
+          this.render();
+        });
+      });
+
+      // Popup edit sidebar toggle
+      root.querySelector("#rkToggleEditSidebar")?.addEventListener("click", () => {
+        this.editSidebarOpen = !this.editSidebarOpen;
+        this.render();
+      });
+
+      // Zoom & display mode toolbar
+      root.querySelector("#rkZoomOut")?.addEventListener("click", () => {
+        this.zoomPct = Math.max(70, this.zoomPct - 10);
+        this.render();
+      });
+      root.querySelector("#rkZoomIn")?.addEventListener("click", () => {
+        this.zoomPct = Math.min(140, this.zoomPct + 10);
+        this.render();
+      });
+      root.querySelectorAll("[data-disp-mode]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          this.displayMode = btn.dataset.dispMode;
+          this.render();
+        });
+      });
+
+      // Rack list selection & deletion
       root.querySelectorAll("[data-select-rack]").forEach((el) => {
         el.addEventListener("click", (ev) => {
           if (ev.target.closest("[data-del-rack]")) return;
@@ -942,7 +1334,6 @@
           this.render();
         });
       });
-
       root.querySelectorAll("[data-del-rack]").forEach((btn) => {
         btn.addEventListener("click", (ev) => {
           ev.stopPropagation();
@@ -950,6 +1341,7 @@
         });
       });
 
+      // New Rack form
       root.querySelector("#rkToggleNew")?.addEventListener("click", () => {
         this.showNewRack = !this.showNewRack;
         this.render();
@@ -977,7 +1369,7 @@
       root.querySelector("#rkUndoBtn")?.addEventListener("click", () => this.undo());
       root.querySelector("#rkRedoBtn")?.addEventListener("click", () => this.redo());
 
-      // Library search & toggles
+      // Library search & custom device form
       root.querySelector("#rkLibSearch")?.addEventListener("input", (ev) => {
         this.libFilter = ev.target.value;
         this.render();
@@ -993,15 +1385,32 @@
         this.showNewTpl = false;
         this.render();
       });
-      root.querySelector("#tplSave")?.addEventListener("click", () => {
+      root.querySelector("#tplSave")?.addEventListener("click", async () => {
         const name = root.querySelector("#tplName")?.value?.trim();
         if (!name) return;
         const device_type = root.querySelector("#tplType")?.value || "custom";
         const u_height = Number(root.querySelector("#tplU")?.value || 1);
-        const manufacturer = root.querySelector("#tplMfr")?.value?.trim() || "";
+        const manufacturer = root.querySelector("#tplMfr")?.value?.trim() || "Custom";
         const power_w = Number(root.querySelector("#tplPower")?.value || 0);
-        this.createTemplate({ name, device_type, u_height, manufacturer, model: name, power_w, color: typeMeta(device_type).color });
+        const fFile = root.querySelector("#tplFrontFile")?.files?.[0];
+        const rFile = root.querySelector("#tplRearFile")?.files?.[0];
+        let front_image = "";
+        let rear_image = "";
+        if (fFile) front_image = await this.uploadCustomImage(fFile, "front");
+        if (rFile) rear_image = await this.uploadCustomImage(rFile, "rear");
+        await this.createTemplate({
+          name,
+          device_type,
+          u_height,
+          manufacturer,
+          model: name,
+          power_w,
+          color: typeMeta(device_type).color,
+          front_image,
+          rear_image,
+        });
       });
+
       root.querySelector("#rkToggleNetbox")?.addEventListener("click", () => {
         this.showNetbox = !this.showNetbox;
         this.showNewTpl = false;
@@ -1016,47 +1425,34 @@
         if (txt) this.importNetbox(txt);
       });
 
-      // Quick mount from template
-      root.querySelectorAll("[data-quick-mount]").forEach((btn) => {
+      // Quick mount from catalog
+      root.querySelectorAll("[data-quick-mount-slug]").forEach((btn) => {
         btn.addEventListener("click", (ev) => {
           ev.stopPropagation();
           if (!rack) return;
-          const tpl = this.templates.find((x) => x.id === btn.dataset.quickMount);
-          if (!tpl) return;
-          const face = tpl.is_full_depth ? "both" : "front";
-          const slot = this.findFirstFreeSlot(rack, tpl.u_height, face, tpl.half_width);
+          const item = this.catalog.find((x) => x.slug === btn.dataset.quickMountSlug);
+          if (!item) return;
+          const face = item.is_full_depth !== false ? "both" : "front";
+          const slot = this.findFirstFreeSlot(rack, item.u_height, face, item.half_width);
           if (!slot) {
-            this.setBanner("err", this.t(`No free ${tpl.u_height}U space available in "${rack.name}".`, `Tidak ada ruang kosong ${tpl.u_height}U di "${rack.name}".`));
+            this.setBanner("err", this.t(`No free ${item.u_height}U space available in "${rack.name}".`, `Tidak ada ruang kosong ${item.u_height}U di "${rack.name}".`));
             return;
           }
-          this.mountDevice(rack.id, {
-            name: tpl.name,
-            device_type: tpl.device_type,
-            manufacturer: tpl.manufacturer,
-            model: tpl.model,
-            u_height: tpl.u_height,
-            u_position: slot.u,
-            face,
-            half_width: tpl.half_width,
-            half_slot: slot.half_slot,
-            power_w: tpl.power_w,
-            status: "active",
-            color: tpl.color,
-          });
+          this.mountDevice(rack.id, this.buildMountPayloadFromCatalog(item, slot.u, face, slot.half_slot));
         });
       });
 
-      // Drag from template library
-      root.querySelectorAll("[data-tpl-id]").forEach((el) => {
+      // Drag from catalog
+      root.querySelectorAll("[data-cat-slug]").forEach((el) => {
         el.addEventListener("dragstart", (ev) => {
-          const tpl = this.templates.find((x) => x.id === el.dataset.tplId);
-          if (!tpl) return;
-          this.dragPayload = { kind: "template", tpl };
-          ev.dataTransfer?.setData("text/plain", tpl.id);
+          const item = this.catalog.find((x) => x.slug === el.dataset.catSlug);
+          if (!item) return;
+          this.dragPayload = { kind: "catalog", item };
+          ev.dataTransfer?.setData("text/plain", item.slug);
         });
       });
 
-      // Click & Drag mounted devices
+      // Click & drag mounted devices
       root.querySelectorAll("[data-dev-id]").forEach((el) => {
         el.addEventListener("click", (ev) => {
           ev.stopPropagation();
@@ -1072,7 +1468,7 @@
         });
       });
 
-      // Drop onto U slots (with live green/red overlap preview!)
+      // Drop onto U slots with green/red overlap validation preview
       root.querySelectorAll(".rk-u-slot").forEach((slotEl) => {
         slotEl.addEventListener("dragover", (ev) => {
           if (!this.canWrite || !rack || !this.dragPayload) return;
@@ -1081,13 +1477,13 @@
           const targetFace = slotEl.dataset.face;
           const targetHalfSlot = slotEl.dataset.slot;
           const cand =
-            this.dragPayload.kind === "template"
+            this.dragPayload.kind === "catalog"
               ? {
                   u_position: targetU,
-                  u_height: this.dragPayload.tpl.u_height,
-                  face: this.dragPayload.tpl.is_full_depth ? "both" : targetFace,
-                  half_width: this.dragPayload.tpl.half_width,
-                  half_slot: this.dragPayload.tpl.half_width ? targetHalfSlot : "full",
+                  u_height: this.dragPayload.item.u_height || 1,
+                  face: this.dragPayload.item.is_full_depth !== false ? "both" : targetFace,
+                  half_width: Boolean(this.dragPayload.item.half_width),
+                  half_slot: this.dragPayload.item.half_width ? targetHalfSlot : "full",
                 }
               : {
                   u_position: targetU,
@@ -1115,22 +1511,8 @@
           const payload = this.dragPayload;
           this.dragPayload = null;
 
-          if (payload.kind === "template") {
-            const tpl = payload.tpl;
-            this.mountDevice(rack.id, {
-              name: tpl.name,
-              device_type: tpl.device_type,
-              manufacturer: tpl.manufacturer,
-              model: tpl.model,
-              u_height: tpl.u_height,
-              u_position: targetU,
-              face: tpl.is_full_depth ? "both" : targetFace,
-              half_width: tpl.half_width,
-              half_slot: tpl.half_width ? targetHalfSlot : "full",
-              power_w: tpl.power_w,
-              status: "active",
-              color: tpl.color,
-            });
+          if (payload.kind === "catalog") {
+            this.mountDevice(rack.id, this.buildMountPayloadFromCatalog(payload.item, targetU, targetFace, targetHalfSlot));
           } else if (payload.kind === "device") {
             const d = payload.dev;
             this.updateDevice(rack.id, d.id, {
@@ -1142,7 +1524,7 @@
         });
       });
 
-      // Device editor actions
+      // Mounted device editor
       root.querySelector("#rkBtnCloseDev")?.addEventListener("click", () => {
         this.selectedDeviceId = null;
         this.render();
@@ -1153,6 +1535,7 @@
       root.querySelector("#rkBtnSaveDev")?.addEventListener("click", () => {
         if (!rack || !this.selectedDeviceId) return;
         const slotSel = root.querySelector("#edDevSlot")?.value || "full";
+        const faceVal = root.querySelector("#edDevFace")?.value || "both";
         this.updateDevice(rack.id, this.selectedDeviceId, {
           name: root.querySelector("#edDevName")?.value?.trim(),
           device_type: root.querySelector("#edDevType")?.value,
@@ -1161,11 +1544,14 @@
           model: root.querySelector("#edDevModel")?.value?.trim() || "",
           u_position: Number(root.querySelector("#edDevPos")?.value || 1),
           u_height: Number(root.querySelector("#edDevH")?.value || 1),
-          face: root.querySelector("#edDevFace")?.value || "front",
+          face: faceVal,
+          is_full_depth: faceVal === "both",
           half_width: slotSel !== "full",
           half_slot: slotSel,
           power_w: Number(root.querySelector("#edDevPower")?.value || 0),
           color: root.querySelector("#edDevColor")?.value || "#0284c7",
+          front_image: root.querySelector("#edDevFrontImg")?.value?.trim() || "",
+          rear_image: root.querySelector("#edDevRearImg")?.value?.trim() || "",
           serial: root.querySelector("#edDevSerial")?.value?.trim() || "",
           notes: root.querySelector("#edDevNotes")?.value || "",
         });

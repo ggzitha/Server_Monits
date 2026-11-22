@@ -128,18 +128,86 @@ async def test_racks_api_crud_overlap_netbox_and_rbac(client, db_session):
     assert r_get.json()["utilization"]["u_used"] == 2
     assert r_get.json()["utilization"]["total_power_w"] == 650.0
 
-    # 6. Import NetBox YAML device-type into native library
+    # 6. Verify Branded Hardware Catalog (MikroTik, Sangfor, Supermicro, Dell, HPE, Juniper + real WebP front/rear images)
+    cat_res = await client.get("/api/v1/racks/library/catalog", headers=adm_headers)
+    assert cat_res.status_code == 200
+    cat_data = cat_res.json()
+    assert cat_data["count"] >= 500
+    for expected_brand in ("MikroTik", "Sangfor", "Dell", "HPE", "Supermicro", "Juniper"):
+        assert expected_brand in cat_data["brands"]
+    real_img_devs = [d for d in cat_data["devices"] if d.get("front_image", "").endswith(".webp") and d.get("rear_image", "").endswith(".webp")]
+    assert len(real_img_devs) >= 100
+
+    # Mount a real branded device with front & rear photos
+    sample_hw = real_img_devs[0]
+    d_img = await client.post(
+        f"/api/v1/racks/{rack_id}/devices",
+        headers=adm_headers,
+        json={
+            "name": sample_hw["model"],
+            "device_type": sample_hw["device_type"],
+            "manufacturer": sample_hw["brand"],
+            "model": sample_hw["model"],
+            "slug": sample_hw["slug"],
+            "u_position": 20,
+            "u_height": sample_hw["u_height"],
+            "face": "both",
+            "is_full_depth": True,
+            "front_image": sample_hw["front_image"],
+            "rear_image": sample_hw["rear_image"],
+        },
+    )
+    assert d_img.status_code == 201
+    assert d_img.json()["front_image"] == sample_hw["front_image"]
+    assert d_img.json()["rear_image"] == sample_hw["rear_image"]
+
+    # 6b. Import NetBox YAML device-type into native library
     nb_yaml = "manufacturer: Cisco\nmodel: Catalyst 9300-48P\nu_height: 1\nis_full_depth: false\n"
     nb_res = await client.post("/api/v1/racks/library/import-netbox", headers=adm_headers, json={"data": nb_yaml})
     assert nb_res.status_code == 201
     assert nb_res.json()["imported"] == 1
     assert nb_res.json()["templates"][0]["device_type"] == "switch"
 
-    # 7. Verify AuditLog recorded rack operations
+    # 7. Verify cables summary endpoint returns custom color & linked rack-device metadata from single DB
+    sample_b = {
+        "version": 1,
+        "floors": [{
+            "id": "ground",
+            "name": "Ground",
+            "rooms": [],
+            "walls": [],
+            "placements": [],
+            "furniture": [{
+                "id": "cable_fiber_1",
+                "cable_group": "cable_fiber_1",
+                "type": "pack:dcim.facility:cable_fiber",
+                "name": "OM4 Trunk R1-R2",
+                "color": "#ff00aa",
+                "mount_y": 2.88,
+                "w": 6.4,
+                "total_length_m": 8.9,
+                "snapped_tray": True,
+                "from_endpoint": {"rack_id": rack_id, "rack_name": "Core-Rack-70U", "device_id": d1_id, "device_name": "Hypervisor-01", "port": "SFP+1"},
+                "to_endpoint": {"rack_id": rack_id, "rack_name": "Core-Rack-70U", "port": "SFP+2"},
+            }],
+        }],
+    }
+    b_save = await client.post("/api/v1/sensors/building", headers=adm_headers, json={"building": sample_b, "name": "DC", "revision": 2})
+    assert b_save.status_code == 200
+    cab_res = await client.get("/api/v1/racks/cables/summary", headers=adm_headers)
+    assert cab_res.status_code == 200
+    cab_data = cab_res.json()
+    assert cab_data["count"] == 1
+    assert cab_data["cables"][0]["color"] == "#ff00aa"
+    assert cab_data["cables"][0]["length_m"] == 8.9
+    assert cab_data["cables"][0]["snapped_tray"] is True
+    assert cab_data["cables"][0]["from_endpoint"]["port"] == "SFP+1"
+
+    # 8. Verify AuditLog recorded rack operations
     audits = (await db_session.execute(select(AuditLog).where(AuditLog.action.like("rack.%")))).scalars().all()
     assert len(audits) >= 3
 
-    # 8. RBAC: Login as Viewer -> GET allowed, POST/DELETE forbidden (403)
+    # 9. RBAC: Login as Viewer -> GET allowed, POST/DELETE forbidden (403)
     login_v = await client.post("/api/v1/auth/login", json={"username": "rack_viewer", "password": "viewerpass123"})
     assert login_v.status_code == 200
     vw_headers = {"X-CSRF-Token": login_v.json()["csrf_token"]}

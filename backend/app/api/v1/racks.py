@@ -8,10 +8,11 @@ import json
 import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -280,15 +281,19 @@ class RackDeviceCreate(BaseModel):
     device_type: str = Field(default="server", max_length=40)
     manufacturer: str = Field(default="", max_length=80)
     model: str = Field(default="", max_length=120)
+    slug: str = Field(default="", max_length=140)
     u_height: int = Field(default=1, ge=1, le=70)
     u_position: int = Field(default=1, ge=1, le=70)
     face: str = Field(default="front", max_length=16)
+    is_full_depth: bool = True
     half_width: bool = False
     half_slot: str = Field(default="full", max_length=16)
     power_w: float = Field(default=0.0, ge=0.0, le=50000.0)
     status: str = Field(default="active", max_length=24)
     serial: str = Field(default="", max_length=120)
     color: str = Field(default="#0284c7", max_length=32)
+    front_image: str = Field(default="", max_length=300)
+    rear_image: str = Field(default="", max_length=300)
     notes: Optional[str] = None
     ports_json: Optional[dict] = None
 
@@ -298,15 +303,19 @@ class RackDeviceUpdate(BaseModel):
     device_type: Optional[str] = Field(default=None, max_length=40)
     manufacturer: Optional[str] = Field(default=None, max_length=80)
     model: Optional[str] = Field(default=None, max_length=120)
+    slug: Optional[str] = Field(default=None, max_length=140)
     u_height: Optional[int] = Field(default=None, ge=1, le=70)
     u_position: Optional[int] = Field(default=None, ge=1, le=70)
     face: Optional[str] = Field(default=None, max_length=16)
+    is_full_depth: Optional[bool] = None
     half_width: Optional[bool] = None
     half_slot: Optional[str] = Field(default=None, max_length=16)
     power_w: Optional[float] = Field(default=None, ge=0.0, le=50000.0)
     status: Optional[str] = Field(default=None, max_length=24)
     serial: Optional[str] = Field(default=None, max_length=120)
     color: Optional[str] = Field(default=None, max_length=32)
+    front_image: Optional[str] = Field(default=None, max_length=300)
+    rear_image: Optional[str] = Field(default=None, max_length=300)
     notes: Optional[str] = None
     ports_json: Optional[dict] = None
 
@@ -316,11 +325,14 @@ class DeviceTemplateCreate(BaseModel):
     device_type: str = Field(default="server", max_length=40)
     manufacturer: str = Field(default="", max_length=80)
     model: str = Field(default="", max_length=120)
+    slug: str = Field(default="", max_length=140)
     u_height: int = Field(default=1, ge=1, le=70)
     is_full_depth: bool = True
     half_width: bool = False
     power_w: float = Field(default=0.0, ge=0.0, le=50000.0)
     color: str = Field(default="#0284c7", max_length=32)
+    front_image: str = Field(default="", max_length=300)
+    rear_image: str = Field(default="", max_length=300)
     notes: Optional[str] = None
 
 
@@ -338,15 +350,19 @@ def _serialize_device(d: RackDevice) -> Dict[str, Any]:
         "device_type": d.device_type,
         "manufacturer": d.manufacturer,
         "model": d.model,
+        "slug": getattr(d, "slug", "") or "",
         "u_height": d.u_height,
         "u_position": d.u_position,
         "face": d.face,
+        "is_full_depth": bool(getattr(d, "is_full_depth", d.face == "both")),
         "half_width": bool(d.half_width),
         "half_slot": d.half_slot,
         "power_w": float(d.power_w or 0.0),
         "status": d.status,
         "serial": d.serial,
         "color": d.color,
+        "front_image": getattr(d, "front_image", "") or "",
+        "rear_image": getattr(d, "rear_image", "") or "",
         "notes": d.notes or "",
         "ports_json": d.ports_json,
     }
@@ -380,12 +396,16 @@ def _serialize_template(t: RackDeviceTemplate) -> Dict[str, Any]:
         "name": t.name,
         "device_type": t.device_type,
         "manufacturer": t.manufacturer,
+        "brand": t.manufacturer or "Custom",
         "model": t.model,
+        "slug": getattr(t, "slug", "") or "",
         "u_height": t.u_height,
         "is_full_depth": bool(t.is_full_depth),
         "half_width": bool(t.half_width),
         "power_w": float(t.power_w or 0.0),
         "color": t.color,
+        "front_image": getattr(t, "front_image", "") or "",
+        "rear_image": getattr(t, "rear_image", "") or "",
         "notes": t.notes or "",
         "is_builtin": bool(t.is_builtin),
     }
@@ -431,7 +451,7 @@ def _rack_height_meters(u_height: int) -> float:
 
 async def _sync_racks_from_building(db: AsyncSession) -> None:
     """Import any rack furniture items from active_building_json that don't yet exist in `racks` table."""
-    cfg_res = await db.execute(select(SystemConfig).where(SystemConfig.key == "active_building_json"))
+    cfg_res = await db.execute(select(SystemConfig).where(SystemConfig.key == "active_3d_building"))
     cfg = cfg_res.scalar_one_or_none()
     if not cfg or not cfg.value:
         return
@@ -478,7 +498,7 @@ async def _sync_racks_from_building(db: AsyncSession) -> None:
 
 async def _upsert_rack_in_building_json(db: AsyncSession, rack: Rack, remove: bool = False) -> None:
     """Keep active_building_json furniture synchronized with the single DB `racks` table."""
-    cfg_res = await db.execute(select(SystemConfig).where(SystemConfig.key == "active_building_json"))
+    cfg_res = await db.execute(select(SystemConfig).where(SystemConfig.key == "active_3d_building"))
     cfg = cfg_res.scalar_one_or_none()
     if not cfg or not cfg.value:
         return
@@ -501,14 +521,29 @@ async def _upsert_rack_in_building_json(db: AsyncSession, rack: Rack, remove: bo
 
     if not remove:
         target_fl = next((fl for fl in floors if fl.get("id") == rack.floor_id), floors[0])
-        target_fl.setdefault("furniture", []).append(
+        existing_furn = target_fl.setdefault("furniture", [])
+        px = round(float(rack.pos_x), 2)
+        pz = round(float(rack.pos_z), 2)
+        # Avoid clipping directly on top of another rack if using default coordinates
+        for _ in range(12):
+            collides = any(
+                abs(float(f.get("x", -999)) - px) < 0.65 and abs(float(f.get("z", -999)) - pz) < 0.85
+                for f in existing_furn
+                if "rack" in str(f.get("type", "")).lower()
+            )
+            if not collides:
+                break
+            px = round(px + 0.85, 2)
+        rack.pos_x = px
+        rack.pos_z = pz
+        existing_furn.append(
             {
                 "id": fid,
-                "type": f"rack_{rack.u_height}u" if rack.u_height in (24, 42) else "rack_42u",
+                "type": "pack:dcim.facility:rack_24u" if rack.u_height <= 28 else "pack:dcim.facility:rack_42u",
                 "name": rack.name,
-                "x": round(float(rack.pos_x), 2),
-                "z": round(float(rack.pos_z), 2),
-                "rot": round(float(rack.rotation), 3),
+                "x": px,
+                "z": pz,
+                "rotation": round(float(rack.rotation), 3),
                 "w": round(float(rack.width_in) * 0.0254 + 0.12, 2),
                 "d": round(float(rack.depth_mm) / 1000.0, 2),
                 "h": _rack_height_meters(rack.u_height),
@@ -521,7 +556,108 @@ async def _upsert_rack_in_building_json(db: AsyncSession, rack: Rack, remove: bo
     cfg.value = json.dumps(payload)
 
 
+_CATALOG_CACHE: Optional[Dict[str, Any]] = None
+_CATALOG_PATH = Path(__file__).resolve().parent.parent.parent / "static" / "rack_assets" / "catalog.json"
+_UPLOAD_IMG_DIR = Path(__file__).resolve().parent.parent.parent / "static" / "uploads" / "device-images"
+
+
+def _load_static_catalog() -> Dict[str, Any]:
+    global _CATALOG_CACHE
+    if _CATALOG_CACHE is not None:
+        return _CATALOG_CACHE
+    if _CATALOG_PATH.exists():
+        try:
+            _CATALOG_CACHE = json.loads(_CATALOG_PATH.read_text(encoding="utf-8"))
+            return _CATALOG_CACHE
+        except Exception:
+            pass
+    return {"version": 1, "brands": [], "count": 0, "devices": []}
+
+
 # ── Device Library Endpoints (declared before /{rack_id} path param) ────────
+
+@router.get("/library/catalog")
+async def get_device_catalog(
+    brand: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
+    q: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("racks:read")),
+):
+    """Return full branded hardware catalog (MikroTik, Sangfor, Supermicro, Dell, HPE, Juniper, etc.) + custom user templates."""
+    cat = _load_static_catalog()
+    devices: List[Dict[str, Any]] = list(cat.get("devices") or [])
+
+    # Prepend user-created custom templates so they appear right in Custom / their Brand
+    res = await db.execute(
+        select(RackDeviceTemplate)
+        .where(RackDeviceTemplate.is_builtin.is_(False))
+        .order_by(RackDeviceTemplate.name)
+    )
+    for t in res.scalars().all():
+        devices.insert(0, {
+            "id": t.id,
+            "slug": getattr(t, "slug", "") or f"custom-{t.id[:8]}",
+            "brand": t.manufacturer or "Custom",
+            "model": t.model or t.name,
+            "name": t.name,
+            "device_type": t.device_type,
+            "category": t.device_type,
+            "u_height": t.u_height,
+            "is_full_depth": bool(t.is_full_depth),
+            "half_width": bool(t.half_width),
+            "power_w": float(t.power_w or 0.0),
+            "color": t.color,
+            "front_image": getattr(t, "front_image", "") or "",
+            "rear_image": getattr(t, "rear_image", "") or "",
+            "has_real_image": bool(getattr(t, "front_image", "")),
+            "is_custom": True,
+        })
+
+    if brand:
+        bl = brand.lower()
+        devices = [d for d in devices if (d.get("brand") or "").lower() == bl]
+    if category:
+        cl = category.lower()
+        devices = [d for d in devices if (d.get("device_type") or "").lower() == cl or (d.get("category") or "").lower() == cl]
+    if q:
+        ql = q.lower()
+        devices = [
+            d for d in devices
+            if ql in (d.get("model") or "").lower()
+            or ql in (d.get("brand") or "").lower()
+            or ql in (d.get("name") or "").lower()
+            or ql in (d.get("slug") or "").lower()
+        ]
+
+    brands = sorted({d.get("brand") or "Generic" for d in devices})
+    return {"brands": brands, "count": len(devices), "devices": devices}
+
+
+@router.post("/library/upload-image", status_code=status.HTTP_201_CREATED)
+async def upload_device_image(
+    file: UploadFile = File(...),
+    side: str = Form("front"),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("racks:write")),
+):
+    """Upload a custom front or rear hardware photo (PNG/JPG/WebP, max 5MB) for custom rack devices."""
+    ext = Path(file.filename or "device.png").suffix.lower()
+    if ext not in (".png", ".jpg", ".jpeg", ".webp"):
+        raise HTTPException(status_code=400, detail="Only PNG, JPG, and WebP images are supported.")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Image exceeds 5 MB limit.")
+    _UPLOAD_IMG_DIR.mkdir(parents=True, exist_ok=True)
+    safe_side = "rear" if side == "rear" else "front"
+    fname = f"dev_{uuid.uuid4().hex[:12]}.{safe_side}{ext}"
+    (_UPLOAD_IMG_DIR / fname).write_bytes(data)
+    url = f"/static/uploads/device-images/{fname}"
+    await _write_audit(db, current_user, request, "rack.image.upload", "rack_device_image", fname, {"side": safe_side, "url": url})
+    await db.commit()
+    return {"url": url, "side": safe_side}
+
 
 @router.get("/library/templates")
 async def list_device_templates(
@@ -546,11 +682,14 @@ async def create_device_template(
         device_type=dtype,
         manufacturer=body.manufacturer.strip(),
         model=body.model.strip(),
+        slug=body.slug.strip(),
         u_height=body.u_height,
         is_full_depth=body.is_full_depth,
         half_width=body.half_width,
         power_w=body.power_w,
         color=body.color,
+        front_image=body.front_image.strip(),
+        rear_image=body.rear_image.strip(),
         notes=body.notes,
         is_builtin=False,
     )
@@ -607,6 +746,53 @@ async def import_netbox_device_types(
     )
     await db.commit()
     return {"imported": len(created), "templates": created}
+
+
+@router.get("/cables/summary")
+async def list_cables_summary(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("racks:read")),
+):
+    """Return all cable runs and cable trays from the active floor plan DB with linked rack/device metadata."""
+    cfg_res = await db.execute(select(SystemConfig).where(SystemConfig.key == "active_3d_building"))
+    cfg = cfg_res.scalar_one_or_none()
+    if not cfg or not cfg.value:
+        return {"cables": [], "count": 0}
+    try:
+        payload = json.loads(cfg.value)
+        building = payload.get("building") if isinstance(payload, dict) and "building" in payload else payload
+        floors = building.get("floors", []) if isinstance(building, dict) else []
+    except Exception:
+        return {"cables": [], "count": 0}
+
+    groups: Dict[str, Dict[str, Any]] = {}
+    for fl in floors:
+        fl_id = fl.get("id") or "ground"
+        for f in fl.get("furniture") or []:
+            ftype = str(f.get("type") or "")
+            if "cable_" not in ftype:
+                continue
+            gid = str(f.get("cable_group") or f.get("id"))
+            if gid not in groups:
+                groups[gid] = {
+                    "id": gid,
+                    "floor_id": fl_id,
+                    "name": f.get("name") or gid,
+                    "cable_type": ftype.split(":")[-1],
+                    "color": f.get("color") or "#ef4444",
+                    "mount_y": float(f.get("mount_y") or 0.0),
+                    "length_m": float(f.get("total_length_m") or 0.0),
+                    "segments": 0,
+                    "from_endpoint": f.get("from_endpoint"),
+                    "to_endpoint": f.get("to_endpoint"),
+                    "snapped_tray": bool(f.get("snapped_tray", False)),
+                }
+            g = groups[gid]
+            g["segments"] += 1
+            if not g["length_m"]:
+                g["length_m"] = round(g["length_m"] + float(f.get("w") or 0.0), 2)
+    cables = list(groups.values())
+    return {"cables": cables, "count": len(cables)}
 
 
 @router.get("/export")
@@ -798,15 +984,19 @@ async def add_rack_device(
         device_type=dtype,
         manufacturer=body.manufacturer.strip(),
         model=body.model.strip(),
+        slug=body.slug.strip(),
         u_height=body.u_height,
         u_position=body.u_position,
         face=face,
+        is_full_depth=body.is_full_depth,
         half_width=body.half_width,
         half_slot=half_slot,
         power_w=body.power_w,
         status=dstatus,
         serial=body.serial.strip(),
         color=body.color,
+        front_image=body.front_image.strip(),
+        rear_image=body.rear_image.strip(),
         notes=body.notes,
         ports_json=body.ports_json,
     )
@@ -882,6 +1072,10 @@ async def update_rack_device(
         dev.manufacturer = body.manufacturer.strip()
     if body.model is not None:
         dev.model = body.model.strip()
+    if body.slug is not None:
+        dev.slug = body.slug.strip()
+    if body.is_full_depth is not None:
+        dev.is_full_depth = body.is_full_depth
     if body.power_w is not None:
         dev.power_w = body.power_w
     if body.status in VALID_STATUSES:
@@ -890,6 +1084,10 @@ async def update_rack_device(
         dev.serial = body.serial.strip()
     if body.color is not None:
         dev.color = body.color
+    if body.front_image is not None:
+        dev.front_image = body.front_image.strip()
+    if body.rear_image is not None:
+        dev.rear_image = body.rear_image.strip()
     if body.notes is not None:
         dev.notes = body.notes
     if body.ports_json is not None:

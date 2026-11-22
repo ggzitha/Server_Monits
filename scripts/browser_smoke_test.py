@@ -504,19 +504,28 @@ def run_smoke_test():
                 raise RuntimeError(f"Light theme did not propagate to Neon3D instantly: {light_check}")
             print(f"  ✓ Light theme applied instantly to app + Neon3D 3D scene: {light_check}")
 
-            # 6. Test 3D Cabling (Below Floor, In Wall, Ceiling for Power, FO, Ethernet) in Editor mode
-            print(">> [6/8] Testing 3D Cabling (Power, FO, Ethernet in Below Floor / Wall / Ceiling)...")
+            # 6. Test 3D Cabling (Custom Color, Tray Snapping, Rack Endpoint Linking & 2D/3D Rendering) in Editor mode
+            print(">> [6/8] Testing 3D Cabling (Custom Color, Tray Snapping, Rack Endpoints & 2D Polylines)...")
             page.locator("#btnEditMode").click()
             page.wait_for_timeout(400)
             page.locator("#btnCablesMgr").click()
             page.wait_for_selector("#drawerCables.open", timeout=5000)
+            # First place an overhead cable tray, then place a custom-colored fiber cable snapped to it
+            page.select_option("#cableTypeSelect", "tray")
+            page.select_option("#cableZoneSelect", "ceiling")
+            page.fill("#cableLabelInput", "Overhead Ladder Tray A")
             page.click("button[onclick='handleAddCableRun()']")
-            page.wait_for_function("() => (document.querySelector('#cableStatusMsg')?.innerText || '').length > 5", timeout=8000)
+            page.wait_for_function("() => (document.querySelector('#cableStatusMsg')?.innerText || '').includes('Overhead Ladder Tray A')", timeout=8000)
+            page.select_option("#cableTypeSelect", "fiber")
+            page.fill("#cableColorInput", "#ff00aa")
+            page.fill("#cableLabelInput", "OM4 Trunk Custom Color")
+            page.click("button[onclick='handleAddCableRun()']")
+            page.wait_for_function("() => (document.querySelector('#cableStatusMsg')?.innerText || '').includes('OM4 Trunk Custom Color')", timeout=8000)
             cable_msg = page.inner_text("#cableStatusMsg")
             if "Added" not in cable_msg and "Ditambahkan" not in cable_msg:
                 raise RuntimeError(f"Expected cable addition confirmation, got '{cable_msg}'")
             page.evaluate("() => window.toggleMonitsDrawer(null)")
-            print(f"  ✓ 3D Cable routing verified: {cable_msg}")
+            print(f"  ✓ 3D Cable routing & Tray snapping verified: {cable_msg}")
 
             # 7. Test 3D CAD Editor Modification + Extras Parity (Wi-Fi Points, Thermo-Hygro Badges, Rack Labels) + Explicit Save
             print(">> [7/8] Testing 2D/3D CAD Editor Extras & Explicit Save to SQLite DB...")
@@ -533,11 +542,12 @@ def run_smoke_test():
                 const wifiPins = svg ? svg.querySelectorAll('.fp3d-wifi-pt').length : 0;
                 const thermoBadges = svg ? svg.querySelectorAll('.fp3d-thermo-badge').length : 0;
                 const rackLabels = svg ? svg.querySelectorAll('.fp3d-rack-label').length : 0;
+                const cableRuns = svg ? svg.querySelectorAll('.fp3d-cable-run').length : 0;
                 const htmlTheme = document.documentElement.dataset.theme;
-                return { wifiPins, thermoBadges, rackLabels, htmlTheme };
+                return { wifiPins, thermoBadges, rackLabels, cableRuns, htmlTheme };
             }""")
-            if editor_extras_check["wifiPins"] < 1 or editor_extras_check["thermoBadges"] < 1:
-                raise RuntimeError(f"Expected 2D editor to render Wi-Fi points and Thermo-Hygro live badges, got: {editor_extras_check}")
+            if editor_extras_check["wifiPins"] < 1 or editor_extras_check["thermoBadges"] < 1 or editor_extras_check["cableRuns"] < 1:
+                raise RuntimeError(f"Expected 2D editor to render Wi-Fi points, Thermo-Hygro badges, and colored cable runs, got: {editor_extras_check}")
             print(f"  ✓ 2D Editor unified extras verified in {editor_extras_check['htmlTheme']} theme: {editor_extras_check}")
 
             # Modify building in Editor (add a custom room 'Custom AI Cluster Pod') and click #btnSavePlan
@@ -584,24 +594,31 @@ def run_smoke_test():
                 raise RuntimeError("Expected unified .fp3d-app-header on /racks")
             if page.evaluate("() => document.documentElement.dataset.theme") != "light":
                 raise RuntimeError("Expected Light theme to persist on /racks!")
-            # Create a 48U rack and mount a device from the Device Library on /racks
+            # Create a 48U rack via Racks tab, then switch to Devices (Brand/Category/A-Z) and mount a real hardware device
+            page.click("[data-sb-mode='racks']")
             page.click("#rkToggleNew")
             page.fill("#rkNewName", "AI-Rack-48U")
             page.fill("#rkNewU", "48")
             page.click("#rkSubmitNew")
             page.wait_for_function("() => (document.querySelector('#racksAppRoot')?.innerText || '').includes('AI-Rack-48U')", timeout=8000)
-            page.locator("[data-quick-mount]").first.click()
-            page.wait_for_selector(".rk-dev-block", timeout=8000)
+            page.click("[data-sb-mode='devices']")
+            page.wait_for_selector("[data-quick-mount-slug]", timeout=8000)
+            page.locator("[data-quick-mount-slug]").first.click()
+            page.wait_for_selector(".rk-dev-block img.rk-dev-img", timeout=8000)
+            page.wait_for_function("() => { const img = document.querySelector('.rk-dev-block img.rk-dev-img'); return img && img.complete && img.naturalWidth > 0; }", timeout=8000)
             rk_check = page.evaluate("""() => {
                 const txt = (document.querySelector('#racksAppRoot')?.innerText || '').toLowerCase();
+                const imgs = Array.from(document.querySelectorAll('.rk-dev-block img.rk-dev-img'));
                 return {
                     hasIframe: document.querySelectorAll('iframe').length,
                     devCount: document.querySelectorAll('.rk-dev-block').length,
-                    hasFrontRear: txt.includes('front elevation') && txt.includes('rear elevation'),
+                    loadedPhotos: imgs.filter(i => i.complete && i.naturalWidth > 0).length,
+                    hasFrontRear: txt.includes('front') && txt.includes('rear'),
+                    hasBrandTabs: !!document.querySelector('[data-sort-tab="brand"]') && !!document.querySelector('[data-sort-tab="category"]') && !!document.querySelector('[data-sort-tab="az"]'),
                     hasStats: txt.includes('u-space utilization') && txt.includes('total power draw')
                 };
             }""")
-            if rk_check["hasIframe"] != 0 or rk_check["devCount"] < 1 or not rk_check["hasFrontRear"] or not rk_check["hasStats"]:
+            if rk_check["hasIframe"] != 0 or rk_check["devCount"] < 1 or rk_check["loadedPhotos"] < 1 or not rk_check["hasFrontRear"] or not rk_check["hasBrandTabs"] or not rk_check["hasStats"]:
                 raise RuntimeError(f"Native Rack Elevation check failed: {rk_check}")
             # Also verify Dark theme works cleanly on /racks
             page.evaluate("() => window.applyAppTheme('neon', true)")
@@ -610,10 +627,176 @@ def run_smoke_test():
                 raise RuntimeError("Failed switching /racks to Dark (neon) theme!")
             page.evaluate("() => window.applyAppTheme('light', true)")
             page.wait_for_timeout(200)
-            print(f"  ✓ Native /racks Elevation View verified in Light & Dark themes (0 iframes, Front+Rear, 48U rack + mounted device): {rk_check}")
+            print(f"  ✓ Native /racks Elevation View verified with real WebP photos in Light & Dark themes: {rk_check}")
             page.goto(f"{BASE_URL}/")
             page.wait_for_selector("neonplan3d-panel", timeout=10000)
             page.wait_for_function("() => window.monitsApi && window.nfPanel && window.nfPanel.data && window.nfPanel.data.building", timeout=10000)
+            # Verify NO separate #drawerRacks section exists in app.html, and REAL mouse clicks on 3D racks
+            # open <div id="monitsRackWallPopup" class="fp3d-wall"> OUTSIDE <fp3d-view3d> shadowRoot!
+            if page.locator("#drawerRacks").count() != 0:
+                raise RuntimeError("Separate #drawerRacks section must NOT exist on 3D view!")
+            if page.locator("#monitsRackWallPopup").count() != 0:
+                raise RuntimeError("#monitsRackWallPopup should not exist before clicking a rack!")
+            page.wait_for_function("""() => {
+                const v3d = document.querySelector('neonplan3d-panel')?.shadowRoot?.querySelector('fp3d-view3d');
+                return !!(v3d && v3d.viewer && v3d.viewer.camera && v3d.viewer.floors && v3d.viewer.floors.length > 0 && v3d.viewer.pickFurniture && v3d.viewer.pickFurniture.size > 0);
+            }""", timeout=12000)
+            page.wait_for_timeout(450)
+
+            # 1) REAL mouse click on 'Core Spine Router 01' (f_rack_netcore1, sensor-linked rack on First Floor in full multi-floor overview!)
+            core_rack_click = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                const viewer = v3d.viewer;
+                const canvas = viewer.renderer.domElement;
+                const rect = canvas.getBoundingClientRect();
+                const cam = viewer.camera;
+                // Find Core Spine Router 01 (f_rack_netcore1) first across all floors, fallback to any sensor-linked rack
+                const allRacks = [];
+                for (const fl of viewer.activeFloors()) {
+                    for (const f of (fl.floor.furniture || [])) {
+                        if (f.id === 'f_rack_netcore1') allRacks.unshift({ fl, f });
+                        else if (String(f.type || '').toLowerCase().includes('rack') && (x => x.power || x.temp_entity)(f)) allRacks.push({ fl, f });
+                    }
+                }
+                for (const { fl, f } of allRacks) {
+                    const pin = Array.from(v3d.shadowRoot.querySelectorAll('button.fp3d-dev')).find(b => (b.title || '').includes(f.name) || (b.innerText || '').includes(f.name));
+                    if (pin) {
+                        const pr = pin.getBoundingClientRect();
+                        const cx = pr.left + pr.width / 2, cy = pr.top + pr.height / 2;
+                        const topEl = v3d.shadowRoot.elementFromPoint(cx, cy);
+                        if (pr.width > 0 && pr.height > 0 && (topEl === pin || pin.contains(topEl))) {
+                            return { ok: true, viaPin: true, fid: f.id, name: f.name, clientX: cx, clientY: cy };
+                        }
+                    }
+                    const h = f.h || 1.4;
+                    const offsets = [[0,0.55,0],[0,0.85,0],[0,0.2,0],[0.2,0.5,0],[-0.2,0.5,0],[0,0.5,0.25],[0,0.5,-0.25]];
+                    for (const [dx, my, dz] of offsets) {
+                        const wv = cam.position.clone().set(f.x + dx, h * my, f.z + dz);
+                        fl.group.localToWorld(wv);
+                        const pv = wv.project(cam);
+                        const lx = (pv.x * 0.5 + 0.5) * rect.width;
+                        const ly = (-pv.y * 0.5 + 0.5) * rect.height;
+                        const cx = rect.left + lx, cy = rect.top + ly;
+                        if (v3d.shadowRoot.elementFromPoint(cx, cy) !== canvas) continue;
+                        const hit = viewer.pick(lx, ly, true);
+                        if (hit && hit.entity === 'rack:' + f.id) {
+                            return { ok: true, viaMesh: true, fid: f.id, name: f.name, clientX: cx, clientY: cy };
+                        }
+                    }
+                }
+                return { ok: false, reason: 'no unoccluded rack mesh or pin found in overview' };
+            }""")
+            if not core_rack_click.get("ok"):
+                raise RuntimeError(f"Could not project sensor-linked rack (Core Spine Router 01) for real mouse click: {core_rack_click}")
+            page.mouse.click(core_rack_click["clientX"], core_rack_click["clientY"])
+            page.wait_for_selector("#monitsRackWallPopup.fp3d-wall", timeout=6000)
+            core_info = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                const wall = document.querySelector('#monitsRackWallPopup.fp3d-wall');
+                return {
+                    inShadowRoot: !!v3d?.shadowRoot?.querySelector('.fp3d-wall'),
+                    outsideShadowRoot: !!wall && wall.parentElement === document.body,
+                    head: wall?.querySelector('.fp3d-wall-head')?.innerText?.trim() || '',
+                    cabinets: wall?.querySelectorAll('.fp3d-rw-cab')?.length || 0
+                };
+            }""")
+            if core_info["inShadowRoot"] or not core_info["outsideShadowRoot"] or core_rack_click["name"] not in core_info["head"] or core_info["cabinets"] != 2:
+                raise RuntimeError(f"Real mouse click on '{core_rack_click['name']}' popup check failed: {core_info}")
+            print(f"  ✓ REAL 3D mouse click ({'pin' if core_rack_click.get('viaPin') else 'mesh'}) on '{core_rack_click['name']}' opened <div class='fp3d-wall'> OUTSIDE <fp3d-view3d>: {core_info}")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(150)
+            if page.locator("#monitsRackWallPopup").count() != 0:
+                raise RuntimeError("Pressing Escape must close and remove #monitsRackWallPopup!")
+
+            # 2) Switch to Ground Floor so Ground Floor racks aren't occluded by First Floor, then REAL mouse click directly on AI-Rack-48U 3D MESH (with real WebP hardware photos!)
+            page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                v3d.viewer.setFloor('ground');
+                // Turn off floating hologram overlays temporarily or inspect unoccluded rack pixels
+                v3d.viewer.fit(0);
+            }""")
+            page.wait_for_timeout(300)
+            rack_click_target = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                const viewer = v3d.viewer;
+                const canvas = viewer.renderer.domElement;
+                const rect = canvas.getBoundingClientRect();
+                const racks = window.monitsApi.getRacks?.() || [];
+                const aiRack = racks.find(r => r.name === 'AI-Rack-48U');
+                const targetFid = aiRack?.furniture_id;
+                const fl = viewer.activeFloors().find(x => x.floor.id === 'ground') || viewer.activeFloors()[0];
+                const f = (fl?.floor?.furniture || []).find(x => x.id === targetFid);
+                if (!f || !fl) return { ok: false, reason: 'AI-Rack-48U furniture not found on ground floor' };
+                const cam = viewer.camera;
+                const h = f.h || 2.0;
+                const samples = [];
+                for (const my of [0.55, 0.78, 0.30, 0.90, 0.15]) {
+                    for (const [dx, dz] of [[0,0], [0.18,0], [-0.18,0], [0,0.28], [0,-0.28]]) {
+                        samples.push([f.x + dx, h * my, f.z + dz]);
+                    }
+                }
+                const debugSamples = [];
+                for (const [wx, wy, wz] of samples) {
+                    const wv = cam.position.clone().set(wx, wy, wz);
+                    fl.group.localToWorld(wv);
+                    const pv = wv.project(cam);
+                    const lx = (pv.x * 0.5 + 0.5) * rect.width;
+                    const ly = (-pv.y * 0.5 + 0.5) * rect.height;
+                    if (lx < 0 || lx > rect.width || ly < 0 || ly > rect.height) continue;
+                    const cx = rect.left + lx, cy = rect.top + ly;
+                    const topEl = v3d.shadowRoot.elementFromPoint(cx, cy);
+                    const hit = viewer.pick(lx, ly, true);
+                    if (debugSamples.length < 4) {
+                        debugSamples.push({ lx: Math.round(lx), ly: Math.round(ly), hit, el: topEl ? topEl.tagName + '.' + topEl.className : null });
+                    }
+                    if (topEl !== canvas) continue;
+                    if (hit && hit.entity === 'rack:' + f.id) {
+                        return {
+                            ok: true,
+                            fid: f.id,
+                            name: f.name,
+                            clientX: cx,
+                            clientY: cy
+                        };
+                    }
+                }
+                return {
+                    ok: false,
+                    fid: f.id,
+                    name: f.name,
+                    pos: [f.x, f.z, f.h],
+                    hasTri: !!fl.geo.furnitureTris.find(t => t.id === f.id),
+                    pickTarget: viewer.pickFurniture.get(f.id),
+                    debugSamples
+                };
+            }""")
+            if not rack_click_target.get("ok"):
+                raise RuntimeError(f"Could not project AI-Rack-48U on Ground Floor for real mouse click: {rack_click_target}")
+            page.mouse.click(rack_click_target["clientX"], rack_click_target["clientY"])
+            page.wait_for_function("""() => {
+                const wall = document.querySelector('#monitsRackWallPopup.fp3d-wall');
+                const imgs = wall ? Array.from(wall.querySelectorAll('img.fp3d-rw-img')) : [];
+                return !!wall && wall.querySelectorAll('.fp3d-rw-cab').length === 2 && imgs.length >= 1 && imgs.every(i => i.complete && i.naturalWidth > 0);
+            }""", timeout=8000)
+            wall_info = page.evaluate("""() => {
+                const v3d = document.querySelector('neonplan3d-panel').shadowRoot.querySelector('fp3d-view3d');
+                const wall = document.querySelector('#monitsRackWallPopup.fp3d-wall');
+                return {
+                    inShadowRoot: !!v3d?.shadowRoot?.querySelector('.fp3d-wall'),
+                    outsideShadowRoot: !!wall && wall.parentElement === document.body,
+                    head: wall?.querySelector('.fp3d-wall-head')?.innerText?.trim() || '',
+                    cabinets: wall?.querySelectorAll('.fp3d-rw-cab')?.length || 0,
+                    photos: wall?.querySelectorAll('img.fp3d-rw-img')?.length || 0
+                };
+            }""")
+            if wall_info["inShadowRoot"] or not wall_info["outsideShadowRoot"]:
+                raise RuntimeError(f"Rack popup must render OUTSIDE <fp3d-view3d> shadowRoot! Got: {wall_info}")
+            print(f"  ✓ REAL 3D mouse click on '{rack_click_target['name']}' opened <div class='fp3d-wall'> OUTSIDE <fp3d-view3d> with real WebP hardware photos: {wall_info}")
+            # Close via ✕ button and verify complete removal from DOM
+            page.locator('#monitsRackWallPopup .fp3d-wall-head button[aria-label="✕"]').click()
+            page.wait_for_timeout(150)
+            if page.locator("#monitsRackWallPopup").count() != 0:
+                raise RuntimeError("Clicking ✕ must remove #monitsRackWallPopup from DOM!")
             if page.evaluate("() => document.documentElement.dataset.theme") != "light":
                 raise RuntimeError("Expected Light theme to persist when returning to /!")
             # Toggle back to Dark (neon) and verify instant Neon3D update

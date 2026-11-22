@@ -2114,13 +2114,13 @@ export async function createNextFloorHass(options = {}) {
     async toggleLayer(layerEntityId) {
       await hass.callService("input_boolean", "toggle", { entity_id: layerEntityId });
     },
-    async addCableRunToPlan({ cableType, placementZone, customMountY, floorId, name, x1, z1, x2, z2, points, variant }) {
+    async addCableRunToPlan({ cableType, placementZone, customMountY, floorId, name, x1, z1, x2, z2, points, variant, color, snapToTray, fromEndpoint, toEndpoint }) {
       const panel = window.nfPanel;
       const curB = structuredClone(panel?.data?.building || building);
       const targetFloor = (curB.floors || []).find(f => f.id === floorId) || (curB.floors || [])[0];
       if (!targetFloor) return false;
 
-      const pts = Array.isArray(points) && points.length >= 2
+      let pts = Array.isArray(points) && points.length >= 2
         ? points.map(pt => [Number(pt[0]), Number(pt[1])])
         : [[Number(x1), Number(z1)], [Number(x2), Number(z2)]];
 
@@ -2132,14 +2132,46 @@ export async function createNextFloorHass(options = {}) {
         mountY = Number(customMountY);
       }
 
+      // Optional snapping to nearest placed cable_tray / ladder frame (within 0.65m) or room wall (within 0.35m)
+      let snappedTray = false;
+      if (snapToTray && cableType !== "tray") {
+        const trays = (targetFloor.furniture || []).filter(f => String(f.type || "").includes("cable_tray"));
+        const snapPt = (p) => {
+          let best = p;
+          let bestDist = 0.65;
+          for (const tr of trays) {
+            const rad = ((Number(tr.rotation || 0)) * Math.PI) / 180;
+            const halfW = Number(tr.w || 1) / 2;
+            const ax = Number(tr.x) - Math.cos(rad) * halfW;
+            const az = Number(tr.z) - Math.sin(rad) * halfW;
+            const bx = Number(tr.x) + Math.cos(rad) * halfW;
+            const bz = Number(tr.z) + Math.sin(rad) * halfW;
+            const vx = bx - ax, vz = bz - az;
+            const len2 = vx * vx + vz * vz || 1;
+            const t = Math.max(0, Math.min(1, ((p[0] - ax) * vx + (p[1] - az) * vz) / len2));
+            const px = ax + t * vx, pz = az + t * vz;
+            const d = Math.hypot(p[0] - px, p[1] - pz);
+            if (d < bestDist) {
+              bestDist = d;
+              best = [Math.round(px * 100) / 100, Math.round(pz * 100) / 100];
+              if (Number.isFinite(Number(tr.mount_y))) mountY = Number(tr.mount_y);
+              snappedTray = true;
+            }
+          }
+          return best;
+        };
+        pts = pts.map(snapPt);
+      }
+
       const typeMap = {
-        power: { type: "pack:dcim.facility:cable_power", layer: "input_boolean.layer_cable_power", d: 0.14, h: 0.06, defaultVariant: "red_hv" },
-        fiber: { type: "pack:dcim.facility:cable_fiber", layer: "input_boolean.layer_cable_fiber", d: 0.12, h: 0.05, defaultVariant: "aqua_om4" },
-        ethernet: { type: "pack:dcim.facility:cable_ethernet", layer: "input_boolean.layer_cable_ethernet", d: 0.10, h: 0.05, defaultVariant: "blue_cat6a" },
-        tray: { type: "pack:dcim.facility:cable_tray", layer: "input_boolean.layer_cable_tray", d: 0.45, h: 0.08, defaultVariant: "galvanized" }
+        power: { type: "pack:dcim.facility:cable_power", layer: "input_boolean.layer_cable_power", d: 0.14, h: 0.06, defaultVariant: "red_hv", defaultColor: "#ef4444" },
+        fiber: { type: "pack:dcim.facility:cable_fiber", layer: "input_boolean.layer_cable_fiber", d: 0.12, h: 0.05, defaultVariant: "aqua_om4", defaultColor: "#00e5ff" },
+        ethernet: { type: "pack:dcim.facility:cable_ethernet", layer: "input_boolean.layer_cable_ethernet", d: 0.10, h: 0.05, defaultVariant: "blue_cat6a", defaultColor: "#3b82f6" },
+        tray: { type: "pack:dcim.facility:cable_tray", layer: "input_boolean.layer_cable_tray", d: 0.45, h: 0.08, defaultVariant: "galvanized", defaultColor: "#94a3b8" }
       };
 
       const spec = typeMap[cableType] || typeMap.power;
+      const chosenColor = (color && /^#[0-9a-fA-F]{3,8}$/.test(String(color).trim())) ? String(color).trim() : spec.defaultColor;
       const groupId = `cable_${cableType}_${Date.now().toString(36)}`;
       let totalLen = 0;
       const segments = [];
@@ -2167,13 +2199,30 @@ export async function createNextFloorHass(options = {}) {
           h: spec.h,
           mount_y: mountY,
           rotation: angleDeg,
+          color: chosenColor,
           variant: variant || spec.defaultVariant,
+          from_endpoint: fromEndpoint || null,
+          to_endpoint: toEndpoint || null,
+          snapped_tray: snappedTray,
           show_when: { entity: spec.layer }
         });
       }
-      totalLen = Math.round(totalLen * 100) / 100;
+      // Include vertical riser drops when linked to rack devices (1U = 0.04445m)
+      let verticalDrop = 0;
+      if (fromEndpoint?.u_position) {
+        const devY = 0.1 + Number(fromEndpoint.u_position) * 0.04445;
+        verticalDrop += Math.abs(mountY - devY);
+      }
+      if (toEndpoint?.u_position) {
+        const devY = 0.1 + Number(toEndpoint.u_position) * 0.04445;
+        verticalDrop += Math.abs(mountY - devY);
+      }
+      totalLen = Math.round((totalLen + verticalDrop) * 100) / 100;
       const label = name || `${cableType.toUpperCase()} (${totalLen}m @ ${mountY}m)`;
-      for (const seg of segments) seg.name = label;
+      for (const seg of segments) {
+        seg.name = label;
+        seg.total_length_m = totalLen;
+      }
 
       targetFloor.furniture = [...(targetFloor.furniture || []), ...segments];
       building = curB;
@@ -2181,7 +2230,8 @@ export async function createNextFloorHass(options = {}) {
         panel.data.edit(curB);
       }
       await this.saveBuildingNow(curB);
-      return { id: groupId, name: label, mount_y: mountY, length: totalLen, segments: segments.length };
+      panel?.shadowRoot?.querySelector("fp3d-editor")?.requestUpdate?.();
+      return { id: groupId, name: label, mount_y: mountY, color: chosenColor, length: totalLen, segments: segments.length, snapped_tray: snappedTray };
     },
     getCableRuns() {
       const curB = window.nfPanel?.data?.building || building;
@@ -2197,18 +2247,25 @@ export async function createNextFloorHass(options = {}) {
               name: f.name || gid,
               type: String(f.type).split(":").pop(),
               mount_y: f.mount_y ?? 0,
-              length: 0,
+              color: f.color || (String(f.type).includes("fiber") ? "#00e5ff" : String(f.type).includes("ethernet") ? "#3b82f6" : String(f.type).includes("tray") ? "#94a3b8" : "#ef4444"),
+              points: Array.isArray(f.cable_points) ? f.cable_points : null,
+              from_endpoint: f.from_endpoint || null,
+              to_endpoint: f.to_endpoint || null,
+              layer: f.show_when?.entity || null,
+              length: f.total_length_m ? Number(f.total_length_m) : 0,
+              _computedLen: 0,
               segments: 0
             });
           }
           const g = groups.get(gid);
-          g.length = Math.round((g.length + Number(f.w || 0)) * 100) / 100;
+          g._computedLen = Math.round((g._computedLen + Number(f.w || 0)) * 100) / 100;
+          if (!g.length) g.length = g._computedLen;
           g.segments += 1;
         }
       }
       return [...groups.values()];
     },
-    async updateCableRun(groupId, { name, mountY }) {
+    async updateCableRun(groupId, { name, mountY, color }) {
       const panel = window.nfPanel;
       const curB = structuredClone(panel?.data?.building || building);
       let changed = false;
@@ -2217,6 +2274,7 @@ export async function createNextFloorHass(options = {}) {
           if ((f.cable_group || f.id) === groupId) {
             if (name !== undefined && name.trim()) f.name = name.trim();
             if (mountY !== undefined && mountY !== "" && Number.isFinite(Number(mountY))) f.mount_y = Number(mountY);
+            if (color && /^#[0-9a-fA-F]{3,8}$/.test(String(color).trim())) f.color = String(color).trim();
             changed = true;
           }
         }
@@ -2225,6 +2283,7 @@ export async function createNextFloorHass(options = {}) {
         building = curB;
         if (panel && panel.data) panel.data.edit(curB);
         await this.saveBuildingNow(curB);
+        panel?.shadowRoot?.querySelector("fp3d-editor")?.requestUpdate?.();
       }
       return changed;
     },

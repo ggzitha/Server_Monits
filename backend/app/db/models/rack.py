@@ -60,6 +60,7 @@ class RackDevice(Base, TimestampMixin):
     u_height: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     u_position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     face: Mapped[str] = mapped_column(String(16), nullable=False, default="front")  # front | rear | both
+    is_full_depth: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     half_width: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     half_slot: Mapped[str] = mapped_column(String(16), nullable=False, default="full")  # full | left | right
 
@@ -67,6 +68,9 @@ class RackDevice(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="active")  # active | planned | offline | maintenance
     serial: Mapped[str] = mapped_column(String(120), nullable=False, default="")
     color: Mapped[str] = mapped_column(String(32), nullable=False, default="#0284c7")
+    slug: Mapped[str] = mapped_column(String(140), nullable=False, default="")
+    front_image: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    rear_image: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     ports_json: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
@@ -81,10 +85,13 @@ class RackDeviceTemplate(Base, TimestampMixin):
     device_type: Mapped[str] = mapped_column(String(40), nullable=False, default="server")
     manufacturer: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     model: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    slug: Mapped[str] = mapped_column(String(140), nullable=False, default="")
     u_height: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     is_full_depth: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     half_width: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     power_w: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     color: Mapped[str] = mapped_column(String(32), nullable=False, default="#0284c7")
+    front_image: Mapped[str] = mapped_column(String(300), nullable=False, default="")
+    rear_image: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

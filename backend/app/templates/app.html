@@ -284,11 +284,249 @@
     color: var(--text-muted);
     background: var(--bg-surface-elevated);
   }
+
+  /* On-Demand Rack Elevation Popup — styled identically to Neon3D .fp3d-wall (rendered outside <fp3d-view3d> shadowRoot) */
+  .fp3d-wall.monits-rack-wall {
+    position: fixed;
+    inset: 56px 14px 14px 14px;
+    z-index: 3200;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 16px;
+    background: var(--bg-drawer);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-color);
+    box-shadow: var(--card-shadow);
+    color: var(--text-main);
+    overflow: hidden;
+    animation: monitsWallFadeIn 0.14s ease-out;
+  }
+
+  @keyframes monitsWallFadeIn {
+    from { opacity: 0; transform: scale(0.985); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .fp3d-wall.monits-rack-wall .fp3d-wall-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-main);
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+  }
+
+  .fp3d-wall.monits-rack-wall .fp3d-still {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-left: 6px;
+  }
+
+  .fp3d-wall.monits-rack-wall .fp3d-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card-inner);
+    color: var(--text-main);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .fp3d-wall.monits-rack-wall .fp3d-chip:hover {
+    border-color: var(--accent-cyan);
+    background: var(--accent-cyan-soft);
+    color: var(--accent-cyan);
+  }
+
+  .fp3d-wall.monits-rack-wall .fp3d-wall-grid {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(290px, 460px));
+    justify-content: center;
+    align-items: start;
+    gap: 24px;
+    padding: 8px 6px 16px 6px;
+  }
+
+  @media (max-width: 760px) {
+    .fp3d-wall.monits-rack-wall .fp3d-wall-grid {
+      grid-template-columns: minmax(260px, 1fr);
+    }
+  }
+
+  .fp3d-rw-cab {
+    background: var(--bg-card-inner);
+    border: 7px solid var(--bg-header);
+    outline: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: var(--card-shadow);
+  }
+
+  .fp3d-rw-cab-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 12px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--text-muted);
+    background: var(--bg-header);
+    border-bottom: 1px solid var(--border-color);
+  }
+
+  .fp3d-rw-grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: 30px 1fr 1fr;
+    grid-auto-rows: var(--u-px, 24px);
+    background: var(--bg-app);
+  }
+
+  .fp3d-rw-u {
+    grid-column: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--text-muted);
+    border-right: 2px dotted var(--border-color);
+    border-bottom: 1px solid var(--border-subtle);
+    user-select: none;
+  }
+
+  .fp3d-rw-u.maj {
+    color: var(--text-main);
+    font-weight: 700;
+  }
+
+  .fp3d-rw-slot {
+    grid-column: 2 / 4;
+    border-bottom: 1px solid var(--border-subtle);
+  }
+
+  .fp3d-rw-dev {
+    position: relative;
+    z-index: 3;
+    margin: 0.5px 1px;
+    border-radius: 2px;
+    overflow: hidden;
+    cursor: pointer;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  }
+
+  .fp3d-rw-dev:hover {
+    outline: 1.5px solid var(--accent-cyan);
+    z-index: 5;
+  }
+
+  .fp3d-rw-img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    display: block;
+  }
+
+  .fp3d-rw-ov {
+    position: relative;
+    z-index: 2;
+    height: 100%;
+    padding: 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  }
+
+  .fp3d-rw-ov.img-only {
+    opacity: 0;
+    transition: opacity 0.15s ease;
+  }
+
+  .fp3d-rw-dev:hover .fp3d-rw-ov.img-only {
+    opacity: 1;
+    background: rgba(5, 10, 22, 0.68);
+  }
+
+  .fp3d-rw-ov.img-label {
+    background: linear-gradient(90deg, rgba(5, 10, 22, 0.74), rgba(5, 10, 22, 0.22), rgba(5, 10, 22, 0.72));
+  }
+
+  .fp3d-rw-half {
+    z-index: 2;
+    margin: 0.5px 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: repeating-linear-gradient(
+      -45deg,
+      rgba(148, 163, 184, 0.16),
+      rgba(148, 163, 184, 0.16) 6px,
+      rgba(15, 23, 42, 0.22) 6px,
+      rgba(15, 23, 42, 0.22) 12px
+    );
+    border: 1px dashed var(--border-color);
+    padding: 0 6px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fp3d-rw-empty {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    color: var(--text-muted);
+    pointer-events: none;
+    text-align: center;
+    padding: 16px;
+  }
+
+  .fp3d-rw-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+    padding-top: 6px;
+    border-top: 1px solid var(--border-color);
+    font-size: 12px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
 </style>
 <script src="/static/neonplan3d/basic-types.js"></script>
 <script src="/static/neonplan3d/pack-ids.js"></script>
 <script src="/static/neonplan3d/pack-names.js"></script>
-<script src="/static/js/rack_elevation.js?v=20261122c"></script>
 {% endblock %}
 
 {% block content %}
@@ -487,7 +725,7 @@
       <div class="monits-form-grid">
         <label>
           <span>{{ 'Jenis Kabel' if current_lang == 'id' else 'Cable Type' }}</span>
-          <select id="cableTypeSelect" class="monits-input">
+          <select id="cableTypeSelect" class="monits-input" onchange="window.onCableTypeChange(this.value)">
             <option value="power">⚡ {{ 'Kabel Listrik / Power' if current_lang == 'id' else 'Electric / Power Cable' }}
             </option>
             <option value="fiber">💎 {{ 'Kabel Fiber Optik (FO)' if current_lang == 'id' else 'Fiber Optic (FO) Cable'
@@ -497,6 +735,16 @@
             <option value="tray">🪜 {{ 'Tray Kabel / Ladder Frame' if current_lang == 'id' else 'Cable Tray / Ladder
               Frame' }}</option>
           </select>
+        </label>
+        <label>
+          <span>{{ 'Warna Kabel' if current_lang == 'id' else 'Cable Color' }}</span>
+          <div style="display:flex; gap:6px; align-items:center;">
+            <input id="cableColorInput" type="color" value="#ef4444" class="monits-input" style="width:46px; height:28px; padding:2px; cursor:pointer;" />
+            <label style="display:inline-flex; flex-direction:row; align-items:center; gap:5px; font-size:0.7rem; color:var(--text-main); cursor:pointer;">
+              <input id="cableSnapTray" type="checkbox" checked />
+              <span>{{ 'Snap ke Tray' if current_lang == 'id' else 'Snap to Tray' }}</span>
+            </label>
+          </div>
         </label>
         <label>
           <span>{{ 'Posisi / Elevasi Jalur' if current_lang == 'id' else 'Routing Placement Zone' }}</span>
@@ -539,6 +787,41 @@
             <input id="cableZ2" type="number" step="0.2" value="5.2" class="monits-input" />
           </div>
         </label>
+      </div>
+
+      <!-- Optional Rack & Device Endpoint Linking (auto-fills X/Z & computes 3D drop length) -->
+      <div class="monits-subcard" style="margin-top:8px; padding:8px;">
+        <div style="font-size:0.72rem; color:var(--text-muted); font-weight:600; margin-bottom:6px;">
+          🔗 {{ 'Tautan Endpoint Rak / Perangkat (Opsional)' if current_lang == 'id' else 'Link Rack / Device Endpoints (Optional)' }}
+        </div>
+        <div class="monits-form-grid">
+          <label>
+            <span>{{ 'Dari Rak' if current_lang == 'id' else 'From Rack' }}</span>
+            <select id="cableFromRack" class="monits-input" onchange="window.onCableEndpointRackChange('from', this.value)">
+              <option value="">-- {{ 'Manual (X1, Z1)' if current_lang == 'id' else 'Manual (X1, Z1)' }} --</option>
+            </select>
+          </label>
+          <label>
+            <span>{{ 'Dari Perangkat / Port' if current_lang == 'id' else 'From Device / Port' }}</span>
+            <div style="display:flex; gap:4px;">
+              <select id="cableFromDevice" class="monits-input" style="flex:1;"></select>
+              <input id="cableFromPort" type="text" class="monits-input" placeholder="Port" style="width:54px;" />
+            </div>
+          </label>
+          <label>
+            <span>{{ 'Ke Rak' if current_lang == 'id' else 'To Rack' }}</span>
+            <select id="cableToRack" class="monits-input" onchange="window.onCableEndpointRackChange('to', this.value)">
+              <option value="">-- {{ 'Manual (X2, Z2)' if current_lang == 'id' else 'Manual (X2, Z2)' }} --</option>
+            </select>
+          </label>
+          <label>
+            <span>{{ 'Ke Perangkat / Port' if current_lang == 'id' else 'To Device / Port' }}</span>
+            <div style="display:flex; gap:4px;">
+              <select id="cableToDevice" class="monits-input" style="flex:1;"></select>
+              <input id="cableToPort" type="text" class="monits-input" placeholder="Port" style="width:54px;" />
+            </div>
+          </label>
+        </div>
       </div>
 
       <!-- Multi-Point Turning Waypoints & Canvas Picker -->
@@ -726,21 +1009,6 @@
       <div id="wifiSurveyPointsList"></div>
     </div>
   </div>
-</aside>
-
-<!-- Drawer 4: Native Rack Elevation View & Device Library (Phase 5a) -->
-<aside id="drawerRacks" class="monits-drawer" style="width:min(1120px, calc(100vw - 32px));" aria-label="Rack Elevation & Device Library">
-  <div class="monits-drawer-header">
-    <div class="monits-drawer-title">
-      <span>🗄️</span>
-      <span>{{ _('nav_racks') }}</span>
-    </div>
-    <div style="display:flex; align-items:center; gap:8px;">
-      <a href="/racks" class="monits-pill-btn" style="text-decoration:none; font-size:0.72rem; padding:3px 9px;">⤢ {{ 'Halaman Penuh' if current_lang == 'id' else 'Full Page' }}</a>
-      <button class="monits-drawer-close" onclick="toggleMonitsDrawer(null)">✕</button>
-    </div>
-  </div>
-  <div class="monits-drawer-body" id="drawerRacksBody"></div>
 </aside>
 
 <script type="module">
@@ -975,61 +1243,271 @@
     if (wrap) wrap.style.display = val === "custom" ? "flex" : "none";
   };
 
-  window.toggleMonitsDrawer = function (which, arg = null) {
+  window.toggleMonitsDrawer = function (which) {
     const dev = document.getElementById("drawerDevices");
     const cab = document.getElementById("drawerCables");
     const wifi = document.getElementById("drawerWifiSurvey");
-    const rks = document.getElementById("drawerRacks");
     if (which === "devices") {
       const opening = !dev.classList.contains("open");
       dev.classList.toggle("open", opening);
       cab.classList.remove("open");
       wifi?.classList.remove("open");
-      rks?.classList.remove("open");
       if (opening) renderDevicesDrawer();
     } else if (which === "cables") {
       const opening = !cab.classList.contains("open");
       cab.classList.toggle("open", opening);
       dev.classList.remove("open");
       wifi?.classList.remove("open");
-      rks?.classList.remove("open");
       if (opening) renderCablesDrawer();
     } else if (which === "wifi") {
       const opening = !wifi.classList.contains("open");
       wifi.classList.toggle("open", opening);
       dev.classList.remove("open");
       cab.classList.remove("open");
-      rks?.classList.remove("open");
       if (opening) renderWifiSurveyDrawer();
-    } else if (which === "racks") {
-      const opening = arg ? true : !rks.classList.contains("open");
-      rks.classList.toggle("open", opening);
-      dev.classList.remove("open");
-      cab.classList.remove("open");
-      wifi?.classList.remove("open");
-      if (opening && window.RackElevationUI) {
-        const body = document.getElementById("drawerRacksBody");
-        if (!window._drawerRackCtrl) {
-          window._drawerRackCtrl = window.RackElevationUI.mount(body, {
-            lang: currentLang,
-            rackId: arg || null,
-            canWrite: {{ 'true' if current_user and (current_user.is_admin or 'racks:write' in (current_user.permissions or [])) else 'false' }},
-            compact: false,
-          });
-        } else {
-          window._drawerRackCtrl.loadAll(arg || null);
-        }
-      }
     } else {
       dev.classList.remove("open");
       cab.classList.remove("open");
       wifi?.classList.remove("open");
-      rks?.classList.remove("open");
     }
   };
 
+  let _rackWallState = { rack: null, disp: "image", zoom: 100, selectedDeviceId: null };
+
+  function escapeRackHtml(v) {
+    return String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  }
+
+  window.closeRackWallPopup = function () {
+    const existing = document.getElementById("monitsRackWallPopup");
+    if (existing) existing.remove();
+    _rackWallState.rack = null;
+    _rackWallState.selectedDeviceId = null;
+  };
+
+  function renderRackWallPopupDom() {
+    const rk = _rackWallState.rack;
+    if (!rk) {
+      window.closeRackWallPopup();
+      return;
+    }
+    let root = document.getElementById("monitsRackWallPopup");
+    if (!root) {
+      root = document.createElement("div");
+      root.id = "monitsRackWallPopup";
+      root.className = "fp3d-wall monits-rack-wall";
+      root.setAttribute("role", "dialog");
+      root.setAttribute("aria-modal", "true");
+      document.body.appendChild(root);
+    }
+
+    const disp = _rackWallState.disp || "image";
+    const zoom = _rackWallState.zoom || 100;
+    const uMax = Number(rk.u_height || 42);
+    const u = rk.utilization || {};
+    const devs = Array.isArray(rk.devices) ? rk.devices : [];
+    const baseUPx = uMax <= 12 ? 32 : (uMax <= 24 ? 26 : 19);
+    const uPx = Math.max(13, Math.round((baseUPx * zoom) / 100));
+
+    const renderFace = (face) => {
+      const title = face === "front" ? (isId ? "DEPAN" : "FRONT") : (isId ? "BELAKANG" : "REAR");
+      let rowsHtml = "";
+      for (let n = uMax; n >= 1; n--) {
+        const row = uMax - n + 1;
+        const maj = n % 5 === 0 || n === 1 || n === uMax;
+        rowsHtml += `<div class="fp3d-rw-u ${maj ? "maj" : ""}" style="grid-row:${row};">${n}</div><div class="fp3d-rw-slot" style="grid-row:${row};"></div>`;
+      }
+
+      let devsHtml = "";
+      for (const d of devs) {
+        const dH = Math.max(1, Number(d.u_height || 1));
+        const dPos = Math.max(1, Number(d.u_position || 1));
+        const topU = Math.min(uMax, dPos + dH - 1);
+        const startRow = uMax - topU + 1;
+        const span = Math.min(dH, uMax - startRow + 1);
+        const col = d.half_width ? (d.half_slot === "right" ? "3 / 4" : "2 / 3") : "2 / 4";
+        const isFullDepth = d.is_full_depth !== false;
+        const onThisFace = d.face === "both" || d.face === face || (isFullDepth && d.face !== face);
+
+        if (!onThisFace) {
+          const halfLbl = isId
+            ? `${d.name} (${d.face === "front" ? "depan" : "belakang"}, half depth)`
+            : `${d.name} (${d.face}, half depth)`;
+          devsHtml += `<div class="fp3d-rw-half" style="grid-row:${startRow} / span ${span}; grid-column:${col};" title="${escapeRackHtml(halfLbl)}">${escapeRackHtml(halfLbl)}</div>`;
+          continue;
+        }
+
+        const imgUrl = face === "rear" ? (d.rear_image || d.front_image || "") : (d.front_image || "");
+        const showImg = Boolean(imgUrl) && disp !== "label";
+        const ovCls = showImg ? (disp === "image" ? "fp3d-rw-ov img-only" : "fp3d-rw-ov img-label") : "fp3d-rw-ov";
+        const bg = d.color || "#334155";
+        const subMeta = `${d.manufacturer ? d.manufacturer + " " : ""}${d.model || d.device_type || ""} · U${dPos}${dH > 1 ? "-U" + (dPos + dH - 1) : ""} · ${Math.round(Number(d.power_w || 0))}W`;
+        devsHtml += `
+          <div class="fp3d-rw-dev" data-dev-id="${escapeRackHtml(d.id)}" style="grid-row:${startRow} / span ${span}; grid-column:${col}; background:${escapeRackHtml(bg)};" title="${escapeRackHtml(d.name + ' — ' + subMeta)}" onclick="window.selectRackWallDevice('${escapeRackHtml(d.id)}')">
+            ${showImg ? `<img class="fp3d-rw-img" src="${escapeRackHtml(imgUrl)}" alt="${escapeRackHtml(d.name)}" loading="lazy" />` : ""}
+            <div class="${ovCls}">
+              <span style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${escapeRackHtml(d.name)}</span>
+              <span style="font-size:10px; opacity:0.9; flex-shrink:0;">${dH}U · ${Math.round(Number(d.power_w || 0))}W</span>
+            </div>
+          </div>
+        `;
+      }
+
+      const emptyHtml = devs.length === 0 && face === "front"
+        ? `<div class="fp3d-rw-empty">${isId ? "Rak kosong — klik ✏️ Edit Rak untuk memasang perangkat nyata (MikroTik, Dell, HPE, Sangfor, Juniper, dll.)" : "Empty rack — click ✏️ Edit Rack to mount real hardware (MikroTik, Dell, HPE, Sangfor, Juniper, etc.)"}</div>`
+        : "";
+
+      return `
+        <div class="fp3d-rw-cab">
+          <div class="fp3d-rw-cab-head">
+            <span>${title}</span>
+            <span>${uMax}U · ${rk.width_in || 19}" · ${rk.depth_mm || 1000}mm</span>
+          </div>
+          <div class="fp3d-rw-grid" style="--u-px:${uPx}px;">
+            ${rowsHtml}
+            ${devsHtml}
+            ${emptyHtml}
+          </div>
+        </div>
+      `;
+    };
+
+    const selDev = devs.find(x => String(x.id) === String(_rackWallState.selectedDeviceId));
+    const dispLabel = disp === "image" ? "🖼️ Image" : (disp === "image-label" ? "🖼️+T" : "T Label");
+    const footerInfo = selDev
+      ? `<strong>${escapeRackHtml(selDev.name)}</strong> · ${escapeRackHtml((selDev.manufacturer || "") + " " + (selDev.model || selDev.device_type || ""))} · U${selDev.u_position} (${selDev.u_height}U, ${escapeRackHtml(selDev.face)}) · ${Math.round(Number(selDev.power_w || 0))} W · ${escapeRackHtml(selDev.status || "active")}${selDev.serial ? " · S/N: " + escapeRackHtml(selDev.serial) : ""}`
+      : (isId ? "Klik perangkat di tampilan Depan/Belakang untuk detail, atau klik ✏️ Edit Rak untuk drag-and-drop." : "Click any device on Front/Rear elevation for details, or click ✏️ Edit Rack for drag-and-drop editing.");
+
+    root.innerHTML = `
+      <div class="fp3d-wall-head">
+        <span>🗄️ ${escapeRackHtml(rk.name || rk.id)} · ${uMax}U <span class="fp3d-still">${u.u_used || 0}/${uMax}U · ${Math.round(u.total_power_w || 0)} W · ${devs.length} ${isId ? "perangkat" : "devices"}</span></span>
+        <span style="display:inline-flex; gap:6px; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="fp3d-chip" onclick="window.zoomRackWallPopup(-15)" title="Zoom Out">−</button>
+          <span style="font-size:11px; color:var(--text-muted); min-width:36px; text-align:center;">${zoom}%</span>
+          <button type="button" class="fp3d-chip" onclick="window.zoomRackWallPopup(15)" title="Zoom In">+</button>
+          <button type="button" class="fp3d-chip" onclick="window.cycleRackWallDisplay()" title="Toggle Image / Label">${dispLabel}</button>
+          <button type="button" class="fp3d-chip" onclick="window.editRackFromWallPopup()">✏️ ${isId ? "Edit Rak" : "Edit Rack"}</button>
+          <button type="button" class="fp3d-chip" aria-label="✕" onclick="window.closeRackWallPopup()">✕</button>
+        </span>
+      </div>
+      <div class="fp3d-wall-grid">
+        ${renderFace("front")}
+        ${renderFace("rear")}
+      </div>
+      <div class="fp3d-rw-footer">
+        <span>${footerInfo}</span>
+        <span>${isId ? "Tekan ESC untuk tutup" : "Press ESC to close"}</span>
+      </div>
+    `;
+  }
+
+  window.cycleRackWallDisplay = function () {
+    const cur = _rackWallState.disp || "image";
+    _rackWallState.disp = cur === "image" ? "image-label" : (cur === "image-label" ? "label" : "image");
+    renderRackWallPopupDom();
+  };
+
+  window.zoomRackWallPopup = function (delta) {
+    _rackWallState.zoom = Math.max(60, Math.min(180, (_rackWallState.zoom || 100) + delta));
+    renderRackWallPopupDom();
+  };
+
+  window.selectRackWallDevice = function (devId) {
+    _rackWallState.selectedDeviceId = devId;
+    renderRackWallPopupDom();
+  };
+
+  window.editRackFromWallPopup = async function () {
+    const rk = _rackWallState.rack;
+    if (!rk) return;
+    let targetId = rk.id || rk.furniture_id || "";
+    if (rk._virtual) {
+      try {
+        const csrf = (document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/) || [])[1] || "";
+        const res = await fetch("/api/v1/racks", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(csrf ? { "X-CSRF-Token": decodeURIComponent(csrf) } : {})
+          },
+          body: JSON.stringify({
+            name: rk.name || rk.furniture_id,
+            furniture_id: rk.furniture_id,
+            floor_id: rk.floor_id || "ground",
+            u_height: rk.u_height || 42,
+            width_in: rk.width_in || 19,
+            depth_mm: rk.depth_mm || 1000,
+            pos_x: Number(rk.pos_x ?? 2.0),
+            pos_z: Number(rk.pos_z ?? 2.0),
+            rotation: Number(rk.rotation ?? 0)
+          })
+        });
+        if (res.ok) {
+          const created = await res.json();
+          if (created?.id) targetId = created.id;
+        }
+      } catch (e) { }
+    }
+    window.closeRackWallPopup();
+    window.navigateWithSave(`/racks?rack=${encodeURIComponent(targetId)}`);
+  };
+
+  window.openRackWallPopup = async function (fid) {
+    if (!fid) return;
+    const api = window.monitsApi;
+    let rk = api?.getRackByFurnitureId?.(fid);
+    if (!rk && api?.refreshRacksFromDb) {
+      await api.refreshRacksFromDb();
+      rk = api.getRackByFurnitureId?.(fid);
+    }
+    if (!rk) {
+      try {
+        const r = await fetch(`/api/v1/racks/${encodeURIComponent(fid)}`);
+        if (r.ok) rk = await r.json();
+      } catch (e) { }
+    }
+    if (!rk) {
+      const b = api?.getBuilding?.() || document.getElementById("monitPanel")?.building;
+      let furn = null;
+      let floorId = "ground";
+      for (const fl of (b?.floors || [])) {
+        const hit = (fl.furniture || []).find(x => x.id === fid);
+        if (hit) { furn = hit; floorId = fl.id || "ground"; break; }
+      }
+      const uH = furn?.u_height || (String(furn?.type || "").toLowerCase().includes("24u") ? 24 : 42);
+      rk = {
+        _virtual: true,
+        id: fid,
+        furniture_id: fid,
+        floor_id: floorId,
+        name: furn?.name || fid,
+        u_height: uH,
+        width_in: 19,
+        depth_mm: 1000,
+        pos_x: furn?.x ?? 2.0,
+        pos_z: furn?.z ?? 2.0,
+        rotation: furn?.rotation ?? 0,
+        devices: [],
+        utilization: { u_used: 0, u_total: uH, total_power_w: 0, device_count: 0 }
+      };
+    }
+    _rackWallState.rack = rk;
+    _rackWallState.selectedDeviceId = null;
+    renderRackWallPopupDom();
+  };
+
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && document.getElementById("monitsRackWallPopup")) {
+      window.closeRackWallPopup();
+    }
+  });
+
   window.openRackElevation = function (rackOrFurnitureId = null) {
-    window.toggleMonitsDrawer("racks", rackOrFurnitureId);
+    if (rackOrFurnitureId) {
+      window.openRackWallPopup(rackOrFurnitureId);
+      return;
+    }
+    window.navigateWithSave?.("/racks");
   };
 
   function computeRoomCenter(poly) {
@@ -1785,8 +2263,46 @@
     }
   }, true);
 
+  window.onCableTypeChange = function (t) {
+    const defaults = { power: "#ef4444", fiber: "#00e5ff", ethernet: "#3b82f6", tray: "#94a3b8" };
+    const colEl = document.getElementById("cableColorInput");
+    if (colEl && defaults[t]) colEl.value = defaults[t];
+  };
+
+  window.onCableEndpointRackChange = function (which, rackId) {
+    const racks = window.monitsApi?.getRacks?.() || [];
+    const rk = racks.find(r => r.id === rackId);
+    const devSel = document.getElementById(which === "from" ? "cableFromDevice" : "cableToDevice");
+    if (devSel) {
+      const devs = rk?.devices || [];
+      devSel.innerHTML = `<option value="">-- ${isId ? "Perangkat" : "Device"} --</option>` +
+        devs.map(d => `<option value="${d.id}" data-u="${d.u_position}">${d.name} (U${d.u_position})</option>`).join("");
+    }
+    if (rk) {
+      const xIn = document.getElementById(which === "from" ? "cableX1" : "cableX2");
+      const zIn = document.getElementById(which === "from" ? "cableZ1" : "cableZ2");
+      if (xIn) xIn.value = Number(rk.pos_x || 2.0).toFixed(1);
+      if (zIn) zIn.value = Number(rk.pos_z || 2.0).toFixed(1);
+    }
+  };
+
+  function populateCableRackDropdowns() {
+    const racks = window.monitsApi?.getRacks?.() || [];
+    const opts = `<option value="">-- Manual --</option>` +
+      racks.map(r => `<option value="${r.id}">🗄️ ${String(r.name).replace(/</g, "&lt;")} (${r.u_height}U)</option>`).join("");
+    for (const id of ["cableFromRack", "cableToRack"]) {
+      const el = document.getElementById(id);
+      if (el) {
+        const prev = el.value;
+        el.innerHTML = opts;
+        if (prev && racks.some(r => r.id === prev)) el.value = prev;
+      }
+    }
+  }
+
   function renderCablesDrawer() {
     if (!window.monitsApi) return;
+    populateCableRackDropdowns();
     const states = window.monitsApi.getStates();
     const layers = [
       { id: "input_boolean.layer_cable_power", label: isId ? "⚡ Kabel Listrik / Power (Bawah Lantai / Dinding / Plafon)" : "⚡ Electric / Power Cables (Below Floor / Wall / Ceiling)" },
@@ -1814,19 +2330,24 @@
     const runs = window.monitsApi.getCableRuns?.() || [];
     if (listEl) {
       if (runs.length === 0) {
-        listEl.innerHTML = `<div style="font-size:0.74rem; color:#64748b;">${isId ? "Belum ada jalur kabel 3D." : "No 3D cable runs placed yet."}</div>`;
+        listEl.innerHTML = `<div style="font-size:0.74rem; color:var(--text-muted);">${isId ? "Belum ada jalur kabel 3D." : "No 3D cable runs placed yet."}</div>`;
       } else {
         listEl.innerHTML = runs.map(c => {
           const safeId = c.id.replace(/[^a-zA-Z0-9_]/g, "_");
+          const epStr = (c.from_endpoint || c.to_endpoint)
+            ? `<div style="font-size:0.63rem; color:var(--accent-cyan); margin-top:2px;">🔗 ${c.from_endpoint ? `${c.from_endpoint.rack_name || ""}${c.from_endpoint.device_name ? "/" + c.from_endpoint.device_name : ""}${c.from_endpoint.port ? ":" + c.from_endpoint.port : ""}` : "Manual"} → ${c.to_endpoint ? `${c.to_endpoint.rack_name || ""}${c.to_endpoint.device_name ? "/" + c.to_endpoint.device_name : ""}${c.to_endpoint.port ? ":" + c.to_endpoint.port : ""}` : "Manual"}</div>`
+            : "";
           return `
             <div class="monits-card-row" style="gap:5px; align-items:center; flex-wrap:nowrap;">
-              <div style="flex:1; min-width:110px;">
+              <input id="inp_cable_col_${safeId}" type="color" value="${c.color || '#ef4444'}" title="Cable Color" style="width:24px; height:24px; border:none; background:none; cursor:pointer; flex-shrink:0;" />
+              <div style="flex:1; min-width:105px;">
                 <input id="inp_cable_name_${safeId}" type="text" class="monits-input" value="${String(c.name).replace(/"/g, "&quot;")}" style="width:100%; font-size:0.72rem; padding:3px 6px;" />
-                <div style="font-size:0.64rem; color:#94a3b8; margin-top:2px;">${c.type} · ${c.length}m · ${c.segments} seg</div>
+                <div style="font-size:0.64rem; color:var(--text-muted); margin-top:2px;">${c.type} · <strong>${c.length}m</strong> · ${c.segments} seg</div>
+                ${epStr}
               </div>
-              <input id="inp_cable_y_${safeId}" type="number" step="0.05" value="${c.mount_y}" title="Elevation Y (m)" class="monits-input" style="width:58px; font-size:0.72rem; padding:3px 5px;" />
+              <input id="inp_cable_y_${safeId}" type="number" step="0.05" value="${c.mount_y}" title="Elevation Y (m)" class="monits-input" style="width:54px; font-size:0.72rem; padding:3px 5px;" />
               <button class="monits-pill-btn on" title="Save Cable Run" onclick="window.onSaveCableRun('${c.id}', '${safeId}')">💾</button>
-              <button class="monits-pill-btn" style="color:#f87171; border-color:rgba(248,113,113,0.35);" title="Delete Cable Run" onclick="window.onDeleteCableRun('${c.id}', '${String(c.name).replace(/'/g, "\\'")}')">🗑️</button>
+              <button class="monits-pill-btn danger" title="Delete Cable Run" onclick="window.onDeleteCableRun('${c.id}', '${String(c.name).replace(/'/g, "\\'")}')">🗑️</button>
             </div>
           `;
         }).join("");
@@ -1838,7 +2359,8 @@
     if (!window.monitsApi) return;
     const name = document.getElementById(`inp_cable_name_${safeId}`)?.value?.trim();
     const mountY = document.getElementById(`inp_cable_y_${safeId}`)?.value;
-    await window.monitsApi.updateCableRun(groupId, { name, mountY });
+    const color = document.getElementById(`inp_cable_col_${safeId}`)?.value;
+    await window.monitsApi.updateCableRun(groupId, { name, mountY, color });
     renderCablesDrawer();
   };
 
@@ -1863,11 +2385,32 @@
     const customMountY = document.getElementById("cableCustomY").value;
     const floorId = document.getElementById("cableFloorSelect").value;
     const name = document.getElementById("cableLabelInput").value.trim();
+    const color = document.getElementById("cableColorInput")?.value || "#ef4444";
+    const snapToTray = Boolean(document.getElementById("cableSnapTray")?.checked);
     const x1 = document.getElementById("cableX1").value;
     const z1 = document.getElementById("cableZ1").value;
     const x2 = document.getElementById("cableX2").value;
     const z2 = document.getElementById("cableZ2").value;
     const pts = [[Number(x1), Number(z1)], ...cableWaypoints, [Number(x2), Number(z2)]];
+
+    const buildEp = (which) => {
+      const rId = document.getElementById(which === "from" ? "cableFromRack" : "cableToRack")?.value;
+      if (!rId) return null;
+      const racks = window.monitsApi.getRacks?.() || [];
+      const rk = racks.find(r => r.id === rId);
+      const dSel = document.getElementById(which === "from" ? "cableFromDevice" : "cableToDevice");
+      const dId = dSel?.value || null;
+      const dev = (rk?.devices || []).find(d => d.id === dId);
+      const port = document.getElementById(which === "from" ? "cableFromPort" : "cableToPort")?.value?.trim() || "";
+      return {
+        rack_id: rId,
+        rack_name: rk?.name || rId,
+        device_id: dId,
+        device_name: dev?.name || "",
+        u_position: dev?.u_position || null,
+        port
+      };
+    };
 
     const added = await window.monitsApi.addCableRunToPlan({
       cableType,
@@ -1875,6 +2418,10 @@
       customMountY,
       floorId,
       name,
+      color,
+      snapToTray,
+      fromEndpoint: buildEp("from"),
+      toEndpoint: buildEp("to"),
       x1,
       z1,
       x2,
@@ -1887,8 +2434,8 @@
       cableWaypoints = [];
       if (cablePickActive) window.toggleCablePointPicker();
       msgEl.textContent = isId
-        ? `✓ Ditambahkan & Disimpan: ${added.name} (Elevasi Y=${added.mount_y}m)`
-        : `✓ Added to 3D & Saved to DB: ${added.name} (Elevation Y=${added.mount_y}m)`;
+        ? `✓ Ditambahkan & Disimpan: ${added.name} (${added.length}m · Elevasi Y=${added.mount_y}m)`
+        : `✓ Added to 3D & Saved to DB: ${added.name} (${added.length}m · Elevation Y=${added.mount_y}m)`;
       renderCablesDrawer();
     }
   };
@@ -1934,7 +2481,7 @@
 
   async function init() {
     try {
-      await import("/static/neonplan3d/neonplan3d.js?v=20261122b");
+      await import("/static/neonplan3d/neonplan3d.js?v=20261122g");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {
