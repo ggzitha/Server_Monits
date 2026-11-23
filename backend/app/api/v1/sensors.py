@@ -652,6 +652,77 @@ async def save_3d_building(
         )
         db.add(fp)
 
+    # Keep DB Sensor & Rack coordinates synchronized with the saved/imported building layout
+    b_floors = payload.building.get("floors") if isinstance(payload.building, dict) else None
+    if isinstance(b_floors, list) and b_floors:
+        sensor_furn_coords: Dict[str, Dict[str, Any]] = {}
+        sensor_pin_coords: Dict[str, Dict[str, Any]] = {}
+        rack_furn_coords: Dict[str, Dict[str, Any]] = {}
+
+        for fl in b_floors:
+            if not isinstance(fl, dict):
+                continue
+            fl_id = str(fl.get("id") or "ground")
+            for furn in (fl.get("furniture") or []):
+                if not isinstance(furn, dict):
+                    continue
+                fid = str(furn.get("id") or "")
+                if fid.startswith("sensor_unit_"):
+                    ident = fid[len("sensor_unit_"):]
+                    if furn.get("x") is not None and furn.get("z") is not None:
+                        sensor_furn_coords[ident] = {
+                            "floor_id": fl_id,
+                            "placement_x": round(float(furn["x"]), 4),
+                            "placement_z": round(float(furn["z"]), 4),
+                            "placement_y": round(float(furn.get("mount_y", 1.5)), 4),
+                        }
+                if fid and furn.get("x") is not None and furn.get("z") is not None:
+                    rack_furn_coords[fid] = {
+                        "floor_id": fl_id,
+                        "pos_x": round(float(furn["x"]), 4),
+                        "pos_z": round(float(furn["z"]), 4),
+                        "rotation": round(float(furn.get("rotation", 0.0)), 4),
+                    }
+            for pin in (fl.get("placements") or []):
+                if not isinstance(pin, dict):
+                    continue
+                eid = str(pin.get("entity_id") or "")
+                if eid.startswith("sensor.") and pin.get("x") is not None and pin.get("z") is not None:
+                    ident = re.sub(r"_(temp|humidity|power|ampere|volt)$", "", eid[len("sensor."):])
+                    if ident and ident not in sensor_pin_coords:
+                        sensor_pin_coords[ident] = {
+                            "floor_id": fl_id,
+                            "placement_x": round(float(pin["x"]), 4),
+                            "placement_z": round(float(pin["z"]), 4),
+                            "placement_y": round(float(pin.get("y", 1.5)), 4),
+                        }
+
+        if sensor_furn_coords or sensor_pin_coords:
+            all_sensors = (await db.execute(select(Sensor))).scalars().all()
+            for s in all_sensors:
+                coords = sensor_furn_coords.get(s.identifier) or sensor_pin_coords.get(s.identifier)
+                if coords:
+                    meta = dict(s.metadata_json or {})
+                    meta["floor_id"] = coords["floor_id"]
+                    meta["placement_x"] = coords["placement_x"]
+                    meta["placement_z"] = coords["placement_z"]
+                    meta["placement_y"] = coords["placement_y"]
+                    s.metadata_json = meta
+
+        if rack_furn_coords:
+            try:
+                from backend.app.db.models.rack import Rack
+                all_racks = (await db.execute(select(Rack))).scalars().all()
+                for rk in all_racks:
+                    rc = rack_furn_coords.get(rk.furniture_id or "") or rack_furn_coords.get(rk.id)
+                    if rc:
+                        rk.floor_id = rc["floor_id"]
+                        rk.pos_x = rc["pos_x"]
+                        rk.pos_z = rc["pos_z"]
+                        rk.rotation = rc["rotation"]
+            except Exception:
+                pass
+
     await db.commit()
     return {
         "status": "saved",

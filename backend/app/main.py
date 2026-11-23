@@ -129,6 +129,12 @@ async def lifespan(app: FastAPI):
                         await conn.execute(text(f"ALTER TABLE {tbl} ADD COLUMN {col_ddl}"))
                     except Exception:
                         pass
+                # Ensure system_config.value is LONGTEXT on MySQL/MariaDB (default TEXT is 64 KB)
+                if conn.dialect.name in ("mysql", "mariadb"):
+                    try:
+                        await conn.execute(text("ALTER TABLE system_config MODIFY COLUMN value LONGTEXT NOT NULL"))
+                    except Exception as e:
+                        logger.warning(f"system_config LONGTEXT upgrade skipped: {e}")
         except Exception as e:
             logger.warning(f"Schema create_all skipped: {e}")
     await auto_initialize_from_env()

@@ -421,33 +421,42 @@ export async function createNextFloorHass(options = {}) {
     const prevReadings = sensorHistoryCache[ident]?.rawReadings || [];
     sensorHistoryCache[ident] = build24hSeriesForSensor(s, prevReadings);
 
-    // If the sensor has explicit 3D placement coordinates in DB, ensure its pins exist on that floor
+    // If the sensor has explicit 3D placement coordinates in DB, ensure its pins exist ONLY if not already present on any floor
     if (s.placement_x !== null && s.placement_x !== undefined && s.placement_z !== null && s.placement_z !== undefined) {
-      const targetFloor = (building.floors || []).find(f => f.id === (s.floor_id || "ground")) || (building.floors || [])[0];
+      const allFloors = building.floors || [];
+      const unitId = `sensor_unit_${ident}`;
+      const existingFurnFloor = allFloors.find(fl => (fl.furniture || []).some(f => f.id === unitId));
+      const existingFurn = existingFurnFloor ? (existingFurnFloor.furniture || []).find(f => f.id === unitId) : null;
+      const existingPinFloor = allFloors.find(fl => (fl.placements || []).some(p =>
+        p.entity_id === tempId || p.entity_id === humId || p.entity_id === pwrId || p.entity_id === ampId || p.entity_id === voltId
+      ));
+      const targetFloor = existingFurnFloor || existingPinFloor || allFloors.find(f => f.id === (s.floor_id || "ground")) || allFloors[0];
       if (targetFloor) {
         targetFloor.placements = targetFloor.placements || [];
-        const px = Number(s.placement_x);
-        const pz = Number(s.placement_z);
-        const py = s.placement_y !== null && s.placement_y !== undefined ? Number(s.placement_y) : 1.5;
+        const px = existingFurn ? Number(existingFurn.x) : Number(s.placement_x);
+        const pz = existingFurn ? Number(existingFurn.z) : Number(s.placement_z);
+        const py = existingFurn && existingFurn.mount_y != null
+          ? Number(existingFurn.mount_y)
+          : (s.placement_y !== null && s.placement_y !== undefined ? Number(s.placement_y) : 1.5);
 
-        if ((sType === "thermohygrometer" || sType === "thermometer") && !targetFloor.placements.some(p => p.entity_id === tempId)) {
-          targetFloor.placements.push({ entity_id: tempId, x: px, z: pz });
+        const hasPinAnywhere = (eid) => allFloors.some(fl => (fl.placements || []).some(p => p.entity_id === eid));
+        if ((sType === "thermohygrometer" || sType === "thermometer") && !hasPinAnywhere(tempId)) {
+          targetFloor.placements.push({ entity_id: tempId, x: px, z: pz, y: py });
         }
-        if ((sType === "thermohygrometer" || sType === "hygrometer") && !targetFloor.placements.some(p => p.entity_id === humId)) {
-          targetFloor.placements.push({ entity_id: humId, x: Math.round((px + (sType === "thermohygrometer" ? 0.35 : 0)) * 100) / 100, z: pz });
+        if ((sType === "thermohygrometer" || sType === "hygrometer") && !hasPinAnywhere(humId)) {
+          targetFloor.placements.push({ entity_id: humId, x: Math.round((px + (sType === "thermohygrometer" ? 0.35 : 0)) * 100) / 100, z: pz, y: py });
         }
-        if (sType === "power_meter" && !targetFloor.placements.some(p => p.entity_id === pwrId)) {
-          targetFloor.placements.push({ entity_id: pwrId, x: px, z: pz });
+        if (sType === "power_meter" && !hasPinAnywhere(pwrId)) {
+          targetFloor.placements.push({ entity_id: pwrId, x: px, z: pz, y: py });
         }
-        if (sType === "ammeter" && !targetFloor.placements.some(p => p.entity_id === ampId)) {
-          targetFloor.placements.push({ entity_id: ampId, x: px, z: pz });
+        if (sType === "ammeter" && !hasPinAnywhere(ampId)) {
+          targetFloor.placements.push({ entity_id: ampId, x: px, z: pz, y: py });
         }
-        if (sType === "voltmeter" && !targetFloor.placements.some(p => p.entity_id === voltId)) {
-          targetFloor.placements.push({ entity_id: voltId, x: px, z: pz });
+        if (sType === "voltmeter" && !hasPinAnywhere(voltId)) {
+          targetFloor.placements.push({ entity_id: voltId, x: px, z: pz, y: py });
         }
         targetFloor.furniture = targetFloor.furniture || [];
-        const unitId = `sensor_unit_${ident}`;
-        if (!targetFloor.furniture.some(f => f.id === unitId)) {
+        if (!existingFurn) {
           targetFloor.furniture.push({
             id: unitId,
             type: "pack:dcim.facility:thermohygro_sensor",
@@ -537,10 +546,55 @@ export async function createNextFloorHass(options = {}) {
     }
   }
 
+  function syncDevicePositionsFromBuilding(b) {
+    if (!b || !Array.isArray(b.floors)) return;
+    const sensorCoords = new Map();
+    const rackCoords = new Map();
+    for (const fl of b.floors) {
+      const flId = fl.id || "ground";
+      for (const f of (fl.furniture || [])) {
+        if (f && typeof f.id === "string" && f.x != null && f.z != null) {
+          if (f.id.startsWith("sensor_unit_")) {
+            const ident = f.id.slice("sensor_unit_".length);
+            sensorCoords.set(ident, { floor_id: flId, x: Number(f.x), z: Number(f.z), y: f.mount_y != null ? Number(f.mount_y) : null });
+          }
+          rackCoords.set(f.id, { floor_id: flId, x: Number(f.x), z: Number(f.z), rotation: Number(f.rotation || 0) });
+        }
+      }
+      for (const p of (fl.placements || [])) {
+        if (p && typeof p.entity_id === "string" && p.entity_id.startsWith("sensor.") && p.x != null && p.z != null) {
+          const ident = p.entity_id.slice("sensor.".length).replace(/_(temp|humidity|power|ampere|volt)$/, "");
+          if (ident && !sensorCoords.has(ident)) {
+            sensorCoords.set(ident, { floor_id: flId, x: Number(p.x), z: Number(p.z), y: p.y != null ? Number(p.y) : null });
+          }
+        }
+      }
+    }
+    for (const s of dbSensorsCache) {
+      const c = sensorCoords.get(s.identifier);
+      if (c) {
+        s.floor_id = c.floor_id;
+        s.placement_x = c.x;
+        s.placement_z = c.z;
+        if (c.y !== null) s.placement_y = c.y;
+      }
+    }
+    for (const rk of racksCache) {
+      const rc = rackCoords.get(rk.furniture_id) || rackCoords.get(rk.id);
+      if (rc) {
+        rk.floor_id = rc.floor_id;
+        rk.pos_x = rc.x;
+        rk.pos_z = rc.z;
+        rk.rotation = rc.rotation;
+      }
+    }
+  }
+
   async function persistBuildingToDatabase(bToSave) {
     if (!bToSave) return false;
     building = structuredClone(bToSave);
     syncRoomsToAreas(building);
+    syncDevicePositionsFromBuilding(building);
     try {
       localStorage.removeItem("nextfloor.unsaved");
     } catch (e) {}
@@ -571,9 +625,24 @@ export async function createNextFloorHass(options = {}) {
   // Helper to resolve 3D coordinates (floorId, x, z, y) for any DB sensor
   function findSensor3DAnchor(s, b) {
     const targetB = b || building;
+    const unitId = `sensor_unit_${s.identifier}`;
     const tempEntityId = `sensor.${s.identifier}_temp`;
     const humEntityId = `sensor.${s.identifier}_humidity`;
 
+    // 1. Prefer sensor furniture item position (keeps 3D cards locked to where the sensor was placed/moved/imported)
+    for (const fl of targetB?.floors || []) {
+      const furn = (fl.furniture || []).find(f => f.id === unitId);
+      if (furn && furn.x != null && furn.z != null) {
+        return {
+          floorId: fl.id,
+          x: Number(furn.x),
+          z: Number(furn.z),
+          y: Number(furn.mount_y ?? s.placement_y ?? 1.5)
+        };
+      }
+    }
+
+    // 2. Fallback to placements pin
     for (const fl of targetB?.floors || []) {
       const pin = (fl.placements || []).find(p => p.entity_id === tempEntityId || p.entity_id === humEntityId);
       if (pin) {
@@ -581,7 +650,7 @@ export async function createNextFloorHass(options = {}) {
           floorId: fl.id,
           x: Number(pin.x),
           z: Number(pin.z),
-          y: Number(s.placement_y ?? 1.35)
+          y: Number(pin.y ?? s.placement_y ?? 1.35)
         };
       }
     }
@@ -995,7 +1064,7 @@ export async function createNextFloorHass(options = {}) {
         return { id };
       }
 
-      if (type === "nextfloor/history/get") {
+      if (type === "nextfloor/history/get" || type === "neonplan3d/history/get") {
         const snap = history.find((h) => h.id === msg.snapshot_id);
         if (!snap) throw { code: "not_found", message: "Restore point not found" };
         return { building: structuredClone(snap.building) };
@@ -1011,11 +1080,62 @@ export async function createNextFloorHass(options = {}) {
         return { revision };
       }
 
-      if (type === "nextfloor/history/delete") {
+      if (type === "nextfloor/history/delete" || type === "neonplan3d/history/delete") {
         const idx = history.findIndex((h) => h.id === msg.snapshot_id);
         if (idx >= 0) history.splice(idx, 1);
         await persistBuildingToDatabase(building);
         return null;
+      }
+
+      // 2b. Full Backup Export & Restore (NeonPlan 3D + Server_Monits DB)
+      if (type === "neonplan3d/backup/export" || type === "nextfloor/backup/export") {
+        const curBuilding = structuredClone(window.nfPanel?.data?.building || building);
+        return {
+          format: "neonplan3d-backup",
+          version: 1,
+          building: curBuilding,
+          plans: [
+            {
+              id: "main",
+              name: mainEntry.name || "Main Server Facility",
+              building: structuredClone(curBuilding)
+            }
+          ],
+          main: "main",
+          packs: [DEMO_PACK],
+          server_monits: {
+            sensors: structuredClone(dbSensorsCache),
+            racks: structuredClone(racksCache),
+            wifi_survey: structuredClone(wifiSurveyPointsCache)
+          }
+        };
+      }
+
+      if (type === "neonplan3d/backup/import" || type === "nextfloor/backup/import") {
+        const incoming = msg.building;
+        if (!incoming || !Array.isArray(incoming.floors)) {
+          throw { code: "invalid_backup", message: "Backup is missing building floors" };
+        }
+        // Keep current state as a restore point before replacing
+        history.push({
+          id: `s${history.length + 1}`,
+          revision,
+          saved_at: Date.now() / 1000,
+          name: activeLang === "id" ? "Sebelum Pulihkan Backup" : "Before Full Backup Restore",
+          building: structuredClone(building)
+        });
+        revision += 1;
+        await persistBuildingToDatabase(incoming);
+        if (window.nfPanel?.data) {
+          window.nfPanel.data.building = structuredClone(building);
+        }
+        pushHassToPanel();
+        for (const cb of listeners) cb({ revision });
+        return {
+          building: structuredClone(building),
+          packs: Array.isArray(msg.packs) ? msg.packs.length : 0,
+          skipped: []
+        };
       }
 
       // 3. Pro Equipment & Cabling Packs

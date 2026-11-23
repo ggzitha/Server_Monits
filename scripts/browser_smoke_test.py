@@ -824,6 +824,56 @@ def run_smoke_test():
                 raise RuntimeError(f"Placed Temp/Humidity sensor was lost after navigating to /admin/users and back! {persisted_check}")
             print("  ✓ 3D Editor modifications AND placed Temp/Humidity sensor persisted across /admin/users navigation!")
 
+            # Verify Full Backup Export + Restore AND File Export/Import preserve exact device/sensor/rack coordinates across reload!
+            backup_check = page.evaluate("""async () => {
+                const hass = window.nfPanel.hass;
+                // 1) Full Backup Export (must NOT throw "can't access property floors, a is undefined")
+                const exp = await hass.callWS({ type: 'neonplan3d/backup/export' });
+                if (!exp || exp.format !== 'neonplan3d-backup' || !exp.building || !Array.isArray(exp.building.floors)) {
+                    return { ok: false, step: 'export', exp };
+                }
+                // Mutate a sensor furniture + rack position inside the backup payload, then import it via backup/import
+                const b2 = structuredClone(exp.building);
+                const fl0 = b2.floors[0];
+                const sensorFurn = fl0.furniture.find(f => f.id === 'sensor_unit_cold_aisle_rack_b09');
+                const rackFurn = fl0.furniture.find(f => String(f.type || '').toLowerCase().includes('rack'));
+                if (!sensorFurn || !rackFurn) return { ok: false, step: 'find_items' };
+                sensorFurn.x = 7.77;
+                sensorFurn.z = 4.44;
+                rackFurn.x = 8.88;
+                rackFurn.z = 3.33;
+                const impRes = await hass.callWS({ type: 'neonplan3d/backup/import', building: b2, packs: exp.packs || [] });
+                const sList = await (await fetch('/api/v1/sensors')).json();
+                const sObj = sList.find(x => x.identifier === 'cold_aisle_rack_b09');
+                return {
+                    ok: impRes?.building?.floors?.length > 0 && sObj?.placement_x === 7.77 && sObj?.placement_z === 4.44,
+                    rackId: rackFurn.id,
+                    sensorDbPos: sObj ? [sObj.placement_x, sObj.placement_z] : null,
+                    packs: impRes?.packs
+                };
+            }""")
+            if not backup_check.get("ok"):
+                raise RuntimeError(f"Full Backup Export/Import coordinate preservation check failed: {backup_check}")
+            # Reload page and verify exact imported coordinates survive reload without drifting back to old DB coords!
+            page.reload()
+            page.wait_for_selector("neonplan3d-panel", timeout=10000)
+            page.wait_for_function("() => window.monitsApi && window.nfPanel && window.nfPanel.data && window.nfPanel.data.building", timeout=10000)
+            after_reload_pos = page.evaluate("""(rackId) => {
+                const b = window.monitsApi.getBuilding();
+                const fl0 = b.floors[0];
+                const sf = fl0.furniture.find(f => f.id === 'sensor_unit_cold_aisle_rack_b09');
+                const rf = fl0.furniture.find(f => f.id === rackId);
+                const card = window.monitsApi.getSensorCardData('cold_aisle_rack_b09');
+                return {
+                    sensorFurn: sf ? [sf.x, sf.z] : null,
+                    rackFurn: rf ? [rf.x, rf.z] : null,
+                    cardAnchor: card?.at ? [card.at.x, card.at.z] : null
+                };
+            }""", backup_check["rackId"])
+            if after_reload_pos["sensorFurn"] != [7.77, 4.44] or after_reload_pos["rackFurn"] != [8.88, 3.33] or after_reload_pos["cardAnchor"] != [7.77, 4.44]:
+                raise RuntimeError(f"Device positions drifted after Backup/Export Import + reload! Got: {after_reload_pos}")
+            print(f"  ✓ Full Backup Export/Restore & File Export/Import preserved EXACT device/sensor/rack coordinates across reload: {after_reload_pos}")
+
             # Verify zero external outbound requests
             if outbound_requests:
                 raise RuntimeError(f"Detected {len(outbound_requests)} external network request(s): {outbound_requests}")

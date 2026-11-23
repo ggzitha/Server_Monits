@@ -1021,7 +1021,7 @@
 </aside>
 
 <script type="module">
-  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261122b";
+  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261123a";
 
   const currentLang = "{{ current_lang|default('en') }}";
   const isId = currentLang === "id";
@@ -2490,7 +2490,7 @@
 
   async function init() {
     try {
-      await import("/static/neonplan3d/neonplan3d.js?v=20261122f");
+      await import("/static/neonplan3d/neonplan3d.js?v=20261123a");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {
