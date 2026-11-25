@@ -620,6 +620,26 @@ def run_smoke_test():
             }""")
             if rk_check["hasIframe"] != 0 or rk_check["devCount"] < 1 or rk_check["loadedPhotos"] < 1 or not rk_check["hasFrontRear"] or not rk_check["hasBrandTabs"] or not rk_check["hasStats"]:
                 raise RuntimeError(f"Native Rack Elevation check failed: {rk_check}")
+            # Verify unstretched object-fit:contain on device photos AND multi-U (2U+) drag preview ghost spanning exact U rows!
+            fit_and_drag_check = page.evaluate("""() => {
+                const img = document.querySelector('.rk-dev-block img.rk-dev-img');
+                const objFit = img ? getComputedStyle(img).objectFit : null;
+                // Simulate dragging a 4U device onto U10 front slot and verify .rk-drop-ghost spans 4 rows!
+                const ctrl = window._racksCtrl;
+                const fourU = (ctrl?.catalog || []).find(d => (d.u_height || 1) >= 2) || { slug: 'test-4u', model: 'Test 4U Server', u_height: 4, is_full_depth: true, half_width: false };
+                ctrl.dragPayload = { kind: 'catalog', item: fourU };
+                const slot = document.querySelector('.rk-u-slot[data-face="front"][data-u="10"][data-slot="left"]');
+                if (slot) slot.dispatchEvent(new Event('dragover', { bubbles: true, cancelable: true }));
+                const ghost = document.querySelector('.rk-drop-ghost');
+                const gridRow = ghost ? ghost.style.gridRow : '';
+                const text = ghost ? ghost.textContent : '';
+                ctrl.dragPayload = null;
+                if (ghost) ghost.remove();
+                return { objFit, uHeight: fourU.u_height, gridRow, text };
+            }""")
+            if fit_and_drag_check["objFit"] != "contain" or f"span {fit_and_drag_check['uHeight']}" not in fit_and_drag_check["gridRow"]:
+                raise RuntimeError(f"Image aspect-fit or multi-U drag preview check failed: {fit_and_drag_check}")
+            print(f"  ✓ Unstretched object-fit:contain & multi-U ({fit_and_drag_check['uHeight']}U) drag ghost verified: {fit_and_drag_check}")
             # Mount a 2nd device, connect a structured cable, and verify NetBox-style SVG Cable Trace overlay!
             page.locator("[data-quick-mount-slug]").nth(1).click()
             page.wait_for_timeout(450)

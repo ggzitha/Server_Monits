@@ -278,7 +278,7 @@
       }
       .rk-elev-grid {
         display: grid;
-        grid-template-columns: minmax(280px, 420px) minmax(280px, 420px);
+        grid-template-columns: minmax(280px, 370px) minmax(280px, 370px);
         gap: 22px;
         transform-origin: top center;
         transition: transform 0.15s ease;
@@ -311,7 +311,7 @@
       .rk-u-grid {
         display: grid;
         grid-template-columns: 30px 1fr 1fr;
-        grid-auto-rows: var(--rk-u-px, 28px);
+        grid-auto-rows: var(--rk-u-px, 31px);
         position: relative;
         background: var(--bg-app);
       }
@@ -347,12 +347,37 @@
         color: var(--accent-cyan);
       }
       .rk-u-slot.drop-ok {
-        background: rgba(34, 197, 94, 0.28) !important;
-        outline: 1px solid var(--accent-green);
+        background: rgba(34, 197, 94, 0.22) !important;
       }
       .rk-u-slot.drop-bad {
-        background: rgba(239, 68, 68, 0.3) !important;
-        outline: 1px solid var(--accent-red);
+        background: rgba(239, 68, 68, 0.25) !important;
+      }
+      .rk-drop-ghost {
+        z-index: 6;
+        pointer-events: none;
+        margin: 1px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 2px 8px;
+        font-size: 0.72rem;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        backdrop-filter: blur(2px);
+      }
+      .rk-drop-ghost.ok {
+        background: rgba(34, 197, 94, 0.34);
+        border: 2px dashed var(--accent-green);
+        color: #fff;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
+      }
+      .rk-drop-ghost.bad {
+        background: rgba(239, 68, 68, 0.36);
+        border: 2px dashed var(--accent-red);
+        color: #fff;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.85);
       }
       /* Photorealistic Hardware Block */
       .rk-dev-block {
@@ -379,7 +404,9 @@
         inset: 0;
         width: 100%;
         height: 100%;
-        object-fit: fill;
+        object-fit: contain;
+        object-position: center;
+        background: #0b1120;
         display: block;
         pointer-events: none;
       }
@@ -1595,7 +1622,24 @@
         });
       });
 
-      // Drop onto U slots with green/red overlap validation preview
+      // Multi-U drag-and-drop preview helper (highlights ALL U slots of 2U/3U/4U+ devices + live ghost block)
+      const clearDropPreview = () => {
+        root.querySelectorAll(".rk-u-slot.drop-ok, .rk-u-slot.drop-bad").forEach((el) => {
+          el.classList.remove("drop-ok", "drop-bad");
+        });
+        root.querySelectorAll(".rk-drop-ghost").forEach((el) => el.remove());
+      };
+
+      root.querySelectorAll("[data-cat-slug], [data-dev-id]").forEach((el) => {
+        el.addEventListener("dragend", clearDropPreview);
+      });
+      root.querySelectorAll(".rk-u-grid").forEach((gridEl) => {
+        gridEl.addEventListener("dragleave", (ev) => {
+          if (!gridEl.contains(ev.relatedTarget)) clearDropPreview();
+        });
+      });
+
+      // Drop onto U slots with exact multi-U height preview & green/red overlap validation
       root.querySelectorAll(".rk-u-slot").forEach((slotEl) => {
         slotEl.addEventListener("dragover", (ev) => {
           if (!this.canWrite || !rack || !this.dragPayload) return;
@@ -1603,34 +1647,59 @@
           const targetU = Number(slotEl.dataset.u);
           const targetFace = slotEl.dataset.face;
           const targetHalfSlot = slotEl.dataset.slot;
-          const cand =
-            this.dragPayload.kind === "catalog"
-              ? {
-                  u_position: targetU,
-                  u_height: this.dragPayload.item.u_height || 1,
-                  face: this.dragPayload.item.is_full_depth !== false ? "both" : targetFace,
-                  half_width: Boolean(this.dragPayload.item.half_width),
-                  half_slot: this.dragPayload.item.half_width ? targetHalfSlot : "full",
-                }
-              : {
-                  u_position: targetU,
-                  u_height: this.dragPayload.dev.u_height,
-                  face: this.dragPayload.dev.face === "both" ? "both" : targetFace,
-                  half_width: this.dragPayload.dev.half_width,
-                  half_slot: this.dragPayload.dev.half_width ? targetHalfSlot : "full",
-                };
-          const err = checkLocalOverlap(rack, cand, this.dragPayload.kind === "device" ? this.dragPayload.dev.id : null);
-          slotEl.classList.toggle("drop-ok", !err);
-          slotEl.classList.toggle("drop-bad", !!err);
-        });
+          const isCat = this.dragPayload.kind === "catalog";
+          const uH = Math.max(1, Number((isCat ? this.dragPayload.item.u_height : this.dragPayload.dev.u_height) || 1));
+          const devName = isCat ? (this.dragPayload.item.model || this.dragPayload.item.name) : this.dragPayload.dev.name;
+          const cand = isCat
+            ? {
+                u_position: targetU,
+                u_height: uH,
+                face: this.dragPayload.item.is_full_depth !== false ? "both" : targetFace,
+                half_width: Boolean(this.dragPayload.item.half_width),
+                half_slot: this.dragPayload.item.half_width ? targetHalfSlot : "full",
+              }
+            : {
+                u_position: targetU,
+                u_height: uH,
+                face: this.dragPayload.dev.face === "both" ? "both" : targetFace,
+                half_width: this.dragPayload.dev.half_width,
+                half_slot: this.dragPayload.dev.half_width ? targetHalfSlot : "full",
+              };
+          const err = checkLocalOverlap(rack, cand, isCat ? null : this.dragPayload.dev.id);
+          const ok = !err;
 
-        slotEl.addEventListener("dragleave", () => {
-          slotEl.classList.remove("drop-ok", "drop-bad");
+          clearDropPreview();
+          const uMax = rack.u_height;
+          const topU = targetU + uH - 1;
+          const clampedTop = Math.min(uMax, topU);
+          const spanRows = Math.max(1, clampedTop - targetU + 1);
+          const startRow = uMax - clampedTop + 1;
+          const gridEl = slotEl.closest(".rk-u-grid");
+
+          if (gridEl) {
+            for (let u = targetU; u <= clampedTop; u++) {
+              const slotsToMark = cand.half_width ? [cand.half_slot] : ["left", "right"];
+              for (const sl of slotsToMark) {
+                const cell = gridEl.querySelector(`.rk-u-slot[data-face="${targetFace}"][data-u="${u}"][data-slot="${sl}"]`);
+                if (cell) cell.classList.add(ok ? "drop-ok" : "drop-bad");
+              }
+            }
+            const ghost = document.createElement("div");
+            ghost.className = `rk-drop-ghost ${ok ? "ok" : "bad"}`;
+            const colSpec = cand.half_width ? (cand.half_slot === "right" ? "3 / 4" : "2 / 3") : "2 / 4";
+            ghost.style.gridRow = `${startRow} / span ${spanRows}`;
+            ghost.style.gridColumn = colSpec;
+            const rangeLbl = uH > 1 ? `U${targetU}–U${topU}` : `U${targetU}`;
+            ghost.textContent = ok
+              ? `${devName} · ${uH}U (${rangeLbl})`
+              : `⚠ ${uH}U (${rangeLbl}) — ${err}`;
+            gridEl.appendChild(ghost);
+          }
         });
 
         slotEl.addEventListener("drop", (ev) => {
           ev.preventDefault();
-          slotEl.classList.remove("drop-ok", "drop-bad");
+          clearDropPreview();
           if (!this.canWrite || !rack || !this.dragPayload) return;
           const targetU = Number(slotEl.dataset.u);
           const targetFace = slotEl.dataset.face;
