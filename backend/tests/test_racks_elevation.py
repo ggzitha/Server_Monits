@@ -7,7 +7,11 @@ test_racks_elevation.py - Phase 5a unit & integration tests:
 """
 import pytest
 from sqlalchemy import select
-from backend.app.api.v1.racks import validate_rack_device_placement, compute_rack_utilization
+from backend.app.api.v1.racks import (
+    validate_rack_device_placement,
+    compute_rack_utilization,
+    trace_cable_paths,
+)
 from backend.app.core.security import hash_password
 from backend.app.db.models.audit import AuditLog
 from backend.app.db.models.system_config import SystemConfig
@@ -203,18 +207,94 @@ async def test_racks_api_crud_overlap_netbox_and_rbac(client, db_session):
     assert cab_data["cables"][0]["snapped_tray"] is True
     assert cab_data["cables"][0]["from_endpoint"]["port"] == "SFP+1"
 
-    # 8. Verify AuditLog recorded rack operations
-    audits = (await db_session.execute(select(AuditLog).where(AuditLog.action.like("rack.%")))).scalars().all()
-    assert len(audits) >= 3
+    # 8. NetBox-style multi-hop Cable Trace API (dist-switch -> panel-1 -> panel-2 -> access-switch-1 & access-switch-2)
+    p1 = (await client.post(
+        f"/api/v1/racks/{rack_id}/devices",
+        headers=adm_headers,
+        json={"name": "panel-1", "device_type": "patch_panel", "manufacturer": "Generic", "model": "48-Pair Fiber Panel", "u_position": 30, "u_height": 1, "face": "both"},
+    )).json()
+    p2 = (await client.post(
+        f"/api/v1/racks/{rack_id}/devices",
+        headers=adm_headers,
+        json={"name": "panel-2", "device_type": "patch_panel", "manufacturer": "Generic", "model": "48-Pair Fiber Panel", "u_position": 32, "u_height": 1, "face": "both"},
+    )).json()
+    acc1 = (await client.post(
+        f"/api/v1/racks/{rack_id}/devices",
+        headers=adm_headers,
+        json={"name": "access-switch-1", "device_type": "switch", "manufacturer": "Juniper", "model": "EX4200-48T", "u_position": 34, "u_height": 1, "face": "both"},
+    )).json()
+    acc2 = (await client.post(
+        f"/api/v1/racks/{rack_id}/devices",
+        headers=adm_headers,
+        json={"name": "access-switch-2", "device_type": "switch", "manufacturer": "Juniper", "model": "EX4200-48T", "u_position": 36, "u_height": 1, "face": "both"},
+    )).json()
 
-    # 9. RBAC: Login as Viewer -> GET allowed, POST/DELETE forbidden (403)
+    c224 = await client.post("/api/v1/racks/cables", headers=adm_headers, json={
+        "label": "Cable #224", "cable_type": "fiber", "color": "#22c55e", "length_m": 2.0,
+        "a_device_id": d1_id, "a_port": "ge-0/0/0", "a_port_side": "front",
+        "b_device_id": p1["id"], "b_port": "Port 1", "b_port_side": "front",
+    })
+    assert c224.status_code == 201
+    c225 = await client.post("/api/v1/racks/cables", headers=adm_headers, json={
+        "label": "Cable #225", "cable_type": "fiber", "color": "#94a3b8", "length_m": 18.5,
+        "a_device_id": p1["id"], "a_port": "Rear Splice", "a_port_side": "rear",
+        "b_device_id": p2["id"], "b_port": "Rear Splice", "b_port_side": "rear",
+    })
+    assert c225.status_code == 201
+    c226 = await client.post("/api/v1/racks/cables", headers=adm_headers, json={
+        "label": "Cable #226", "cable_type": "fiber", "color": "#3b82f6", "length_m": 1.5,
+        "a_device_id": p2["id"], "a_port": "Port 1", "a_port_side": "front",
+        "b_device_id": acc1["id"], "b_port": "ge-0/0/0", "b_port_side": "front",
+    })
+    assert c226.status_code == 201
+    c227 = await client.post("/api/v1/racks/cables", headers=adm_headers, json={
+        "label": "Cable #227", "cable_type": "fiber", "color": "#3b82f6", "length_m": 1.8,
+        "a_device_id": p2["id"], "a_port": "Port 3", "a_port_side": "front",
+        "b_device_id": acc2["id"], "b_port": "ge-0/0/0", "b_port_side": "front",
+    })
+    assert c227.status_code == 201
+
+    tr_res = await client.get(f"/api/v1/racks/devices/{d1_id}/trace?port=ge-0/0/0", headers=adm_headers)
+    assert tr_res.status_code == 200
+    tr = tr_res.json()
+    assert tr["total_paths"] == 2
+    assert sorted(p["destination"]["name"] for p in tr["paths"]) == ["access-switch-1", "access-switch-2"]
+    assert all(p["hops"] == 3 for p in tr["paths"])
+    assert len(tr["related_paths"]) == 2
+
+    # 9. Verify AuditLog recorded rack & cable operations
+    audits = (await db_session.execute(select(AuditLog).where(AuditLog.action.like("rack.%")))).scalars().all()
+    assert len(audits) >= 6
+
+    # 10. RBAC: Login as Viewer -> GET /racks & /trace allowed, POST/DELETE forbidden (403)
     login_v = await client.post("/api/v1/auth/login", json={"username": "rack_viewer", "password": "viewerpass123"})
     assert login_v.status_code == 200
     vw_headers = {"X-CSRF-Token": login_v.json()["csrf_token"]}
 
     v_get = await client.get("/api/v1/racks", headers=vw_headers)
     assert v_get.status_code == 200
+    assert (await client.get(f"/api/v1/racks/devices/{d1_id}/trace", headers=vw_headers)).status_code == 200
     v_post = await client.post("/api/v1/racks", headers=vw_headers, json={"name": "Unauthorized-Rack", "u_height": 42})
     assert v_post.status_code == 403
+    assert (await client.post("/api/v1/racks/cables", headers=vw_headers, json={
+        "a_device_id": d1_id, "a_port": "eth1", "b_device_id": acc1["id"], "b_port": "eth1",
+    })).status_code == 403
     v_del = await client.delete(f"/api/v1/racks/{rack_id}", headers=vw_headers)
     assert v_del.status_code == 403
+
+
+def test_cable_trace_cycle_protection():
+    """Cyclic patch panel wiring must terminate cleanly without infinite recursion."""
+    devs = {
+        "sw1": {"id": "sw1", "name": "SW1", "device_type": "switch", "rack_id": "r1", "rack_name": "R1", "u_position": 1},
+        "pp1": {"id": "pp1", "name": "PP1", "device_type": "patch_panel", "rack_id": "r1", "rack_name": "R1", "u_position": 2},
+    }
+    cables = [
+        {"id": "c1", "label": "C1", "cable_type": "fiber", "status": "connected", "color": "#22c55e", "length_m": 1.0,
+         "a_device_id": "sw1", "a_port": "p1", "a_port_side": "front", "b_device_id": "pp1", "b_port": "Port 1", "b_port_side": "front"},
+        {"id": "c2", "label": "C2", "cable_type": "fiber", "status": "connected", "color": "#22c55e", "length_m": 1.0,
+         "a_device_id": "pp1", "a_port": "Rear 1", "a_port_side": "rear", "b_device_id": "pp1", "b_port": "Port 1", "b_port_side": "front"},
+    ]
+    res = trace_cable_paths("sw1", "p1", devs, cables)
+    assert res["total_paths"] >= 1
+    assert res["paths"][0]["hops"] <= 2

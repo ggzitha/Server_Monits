@@ -5,20 +5,21 @@ Single source of truth for racks (4U-70U + custom), mounted rack devices with st
 and bounds validation, utilization stats, reusable device templates, RBAC enforcement, and AuditLog.
 """
 import json
+import math
 import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.app.api.deps import get_db, require_permission
 from backend.app.db.models.audit import AuditLog
-from backend.app.db.models.rack import Rack, RackDevice, RackDeviceTemplate
+from backend.app.db.models.rack import Rack, RackCable, RackDevice, RackDeviceTemplate
 from backend.app.db.models.system_config import SystemConfig
 from backend.app.db.models.user import User
 from backend.app.services.notifier import notifier
@@ -38,6 +39,9 @@ VALID_DEVICE_TYPES = {
 VALID_FACES = {"front", "rear", "both"}
 VALID_HALF_SLOTS = {"full", "left", "right"}
 VALID_STATUSES = {"active", "planned", "offline", "maintenance", "decommissioned"}
+VALID_CABLE_TYPES = {"fiber", "ethernet", "power", "console", "dac"}
+VALID_CABLE_STATUSES = {"connected", "planned", "decommissioned"}
+VALID_PORT_SIDES = {"front", "rear"}
 
 BUILTIN_TEMPLATES: List[Dict[str, Any]] = [
     {"name": "1U Compute Server", "device_type": "server", "manufacturer": "Generic", "model": "1U Dual-Socket Server", "u_height": 1, "is_full_depth": True, "half_width": False, "power_w": 350.0, "color": "#0284c7"},
@@ -793,6 +797,563 @@ async def list_cables_summary(
                 g["length_m"] = round(g["length_m"] + float(f.get("w") or 0.0), 2)
     cables = list(groups.values())
     return {"cables": cables, "count": len(cables)}
+
+
+# ── Structured Port-to-Port Cables & NetBox-Style Cable Trace ───────────────
+
+class RackCableCreate(BaseModel):
+    label: str = Field(default="", max_length=120)
+    cable_type: str = Field(default="fiber", max_length=32)
+    status: str = Field(default="connected", max_length=24)
+    color: str = Field(default="#22c55e", max_length=32)
+    length_m: Optional[float] = Field(default=None, ge=0.0, le=5000.0)
+    a_device_id: str = Field(min_length=1, max_length=36)
+    a_port: str = Field(min_length=1, max_length=80)
+    a_port_side: str = Field(default="front", max_length=16)
+    b_device_id: str = Field(min_length=1, max_length=36)
+    b_port: str = Field(min_length=1, max_length=80)
+    b_port_side: str = Field(default="front", max_length=16)
+    building_cable_group_id: Optional[str] = Field(default=None, max_length=120)
+    notes: Optional[str] = None
+
+
+class RackCableUpdate(BaseModel):
+    label: Optional[str] = Field(default=None, max_length=120)
+    cable_type: Optional[str] = Field(default=None, max_length=32)
+    status: Optional[str] = Field(default=None, max_length=24)
+    color: Optional[str] = Field(default=None, max_length=32)
+    length_m: Optional[float] = Field(default=None, ge=0.0, le=5000.0)
+    a_port: Optional[str] = Field(default=None, max_length=80)
+    a_port_side: Optional[str] = Field(default=None, max_length=16)
+    b_port: Optional[str] = Field(default=None, max_length=80)
+    b_port_side: Optional[str] = Field(default=None, max_length=16)
+    notes: Optional[str] = None
+
+
+def _estimate_cable_length_m(
+    a_rack: Optional[Rack],
+    a_dev: Optional[RackDevice],
+    b_rack: Optional[Rack],
+    b_dev: Optional[RackDevice],
+) -> float:
+    """Estimate realistic physical cable length (m) from 3D rack coordinates & U positions."""
+    if not a_rack or not b_rack:
+        return 1.5
+    u_a = (a_dev.u_position if a_dev else 1) * 0.04445
+    u_b = (b_dev.u_position if b_dev else 1) * 0.04445
+    if a_rack.id == b_rack.id:
+        # Intra-rack patch cord: vertical delta + slack
+        return round(max(0.5, abs(u_a - u_b) + 0.45), 2)
+    dx = float(a_rack.pos_x) - float(b_rack.pos_x)
+    dz = float(a_rack.pos_z) - float(b_rack.pos_z)
+    horiz = math.hypot(dx, dz)
+    # Overhead tray rise + horizontal run + drop + slack
+    tray_y = 2.85
+    rise = max(0.3, tray_y - u_a) + max(0.3, tray_y - u_b)
+    return round(max(1.0, horiz + rise + 0.6), 2)
+
+
+def _port_number_key(port_name: str) -> Optional[str]:
+    m = re.search(r"(\d+)\s*$", (port_name or "").strip())
+    return m.group(1) if m else None
+
+
+def _is_splice_or_trunk_port(port_name: str) -> bool:
+    low = (port_name or "").strip().lower()
+    return any(k in low for k in ("splice", "trunk", "mpo", "mtp", "backbone", "uplink", "rear"))
+
+
+def trace_cable_paths(
+    origin_device_id: str,
+    origin_port: Optional[str],
+    devices_by_id: Dict[str, Dict[str, Any]],
+    cables: List[Dict[str, Any]],
+    max_hops: int = 12,
+) -> Dict[str, Any]:
+    """
+    Pure NetBox-style end-to-end Cable Trace graph walker.
+
+    Follows structured cables from `origin_device_id` (optionally filtered to `origin_port`),
+    automatically traversing patch panels from front <-> rear (matching port numbers or shared
+    Rear Splice / Trunk ports) with cycle detection and fan-out branch support.
+    """
+    origin = devices_by_id.get(origin_device_id)
+    if not origin:
+        return {
+            "origin": None,
+            "origin_port": origin_port,
+            "connected_ports": [],
+            "paths": [],
+            "related_paths": [],
+            "total_paths": 0,
+        }
+
+    # Build adjacency per device: list of (cable, local_port, local_side, remote_dev_id, remote_port, remote_side)
+    adj: Dict[str, List[Dict[str, Any]]] = {}
+    for c in cables:
+        a_id, b_id = c["a_device_id"], c["b_device_id"]
+        adj.setdefault(a_id, []).append({
+            "cable": c,
+            "local_port": c["a_port"],
+            "local_side": c.get("a_port_side", "front"),
+            "remote_device_id": b_id,
+            "remote_port": c["b_port"],
+            "remote_side": c.get("b_port_side", "front"),
+        })
+        adj.setdefault(b_id, []).append({
+            "cable": c,
+            "local_port": c["b_port"],
+            "local_side": c.get("b_port_side", "front"),
+            "remote_device_id": a_id,
+            "remote_port": c["a_port"],
+            "remote_side": c.get("a_port_side", "front"),
+        })
+
+    origin_edges = adj.get(origin_device_id, [])
+    connected_ports = sorted({e["local_port"] for e in origin_edges})
+    start_edges = (
+        [e for e in origin_edges if e["local_port"].lower() == origin_port.strip().lower()]
+        if origin_port and origin_port.strip()
+        else origin_edges
+    )
+
+    completed_paths: List[Dict[str, Any]] = []
+
+    def _node_snapshot(
+        dev_id: str,
+        in_port: Optional[str],
+        in_side: Optional[str],
+        out_port: Optional[str],
+        out_side: Optional[str],
+        is_pass_through: bool = False,
+    ) -> Dict[str, Any]:
+        d = devices_by_id.get(dev_id, {})
+        return {
+            "id": dev_id,
+            "name": d.get("name") or dev_id,
+            "manufacturer": d.get("manufacturer") or "",
+            "model": d.get("model") or "",
+            "device_type": d.get("device_type") or "custom",
+            "rack_id": d.get("rack_id") or "",
+            "rack_name": d.get("rack_name") or "",
+            "u_position": d.get("u_position") or 1,
+            "color": d.get("color") or "#0284c7",
+            "in_port": in_port,
+            "in_side": in_side,
+            "out_port": out_port,
+            "out_side": out_side,
+            "is_pass_through": is_pass_through,
+        }
+
+    def _walk(
+        curr_dev_id: str,
+        in_port: str,
+        in_side: str,
+        nodes: List[Dict[str, Any]],
+        segments: List[Dict[str, Any]],
+        used_cables: Set[str],
+    ) -> None:
+        curr_dev = devices_by_id.get(curr_dev_id, {})
+        is_patch = (curr_dev.get("device_type") or "").lower() == "patch_panel"
+
+        next_edges: List[Dict[str, Any]] = []
+        if is_patch and len(segments) < max_hops:
+            opposite_side = "rear" if in_side == "front" else "front"
+            cand_edges = [
+                e for e in adj.get(curr_dev_id, [])
+                if e["cable"]["id"] not in used_cables and e["local_side"] == opposite_side
+            ]
+            # 1) Prefer exact port-number match (Port 1 <-> Rear 1)
+            in_num = _port_number_key(in_port)
+            exact = [e for e in cand_edges if in_num and _port_number_key(e["local_port"]) == in_num]
+            if exact:
+                next_edges = exact
+            else:
+                # 2) Allow shared Rear Splice / Trunk pass-through (NetBox rear-port splice behavior!)
+                if opposite_side == "rear":
+                    next_edges = [e for e in cand_edges if _is_splice_or_trunk_port(e["local_port"])] or cand_edges[:1]
+                else:
+                    # Arriving on rear splice -> fan out to front ports (or all connected front ports)
+                    next_edges = cand_edges
+
+        if not next_edges:
+            final_nodes = nodes + [_node_snapshot(curr_dev_id, in_port, in_side, None, None, is_pass_through=False)]
+            total_len = round(sum(float(s.get("length_m") or 0.0) for s in segments), 2)
+            completed_paths.append({
+                "nodes": final_nodes,
+                "segments": segments,
+                "hops": len(segments),
+                "total_length_m": total_len,
+                "destination": final_nodes[-1],
+            })
+            return
+
+        for edge in next_edges:
+            c = edge["cable"]
+            next_nodes = nodes + [
+                _node_snapshot(
+                    curr_dev_id,
+                    in_port,
+                    in_side,
+                    edge["local_port"],
+                    edge["local_side"],
+                    is_pass_through=True,
+                )
+            ]
+            seg = {
+                "cable_id": c["id"],
+                "label": c.get("label") or f"Cable #{c['id'][:6]}",
+                "cable_type": c.get("cable_type") or "fiber",
+                "status": c.get("status") or "connected",
+                "color": c.get("color") or "#22c55e",
+                "length_m": c.get("length_m"),
+                "from_device_id": curr_dev_id,
+                "from_port": edge["local_port"],
+                "from_port_side": edge["local_side"],
+                "to_device_id": edge["remote_device_id"],
+                "to_port": edge["remote_port"],
+                "to_port_side": edge["remote_side"],
+            }
+            _walk(
+                edge["remote_device_id"],
+                edge["remote_port"],
+                edge["remote_side"],
+                next_nodes,
+                segments + [seg],
+                used_cables | {c["id"]},
+            )
+
+    for edge in start_edges:
+        c = edge["cable"]
+        start_node = _node_snapshot(
+            origin_device_id,
+            None,
+            None,
+            edge["local_port"],
+            edge["local_side"],
+            is_pass_through=False,
+        )
+        seg = {
+            "cable_id": c["id"],
+            "label": c.get("label") or f"Cable #{c['id'][:6]}",
+            "cable_type": c.get("cable_type") or "fiber",
+            "status": c.get("status") or "connected",
+            "color": c.get("color") or "#22c55e",
+            "length_m": c.get("length_m"),
+            "from_device_id": origin_device_id,
+            "from_port": edge["local_port"],
+            "from_port_side": edge["local_side"],
+            "to_device_id": edge["remote_device_id"],
+            "to_port": edge["remote_port"],
+            "to_port_side": edge["remote_side"],
+        }
+        _walk(
+            edge["remote_device_id"],
+            edge["remote_port"],
+            edge["remote_side"],
+            [start_node],
+            [seg],
+            {c["id"]},
+        )
+
+    related_paths = [
+        {
+            "origin_device": p["nodes"][0]["name"],
+            "origin_port": p["nodes"][0]["out_port"],
+            "origin_rack": p["nodes"][0]["rack_name"],
+            "destination_device": p["destination"]["name"],
+            "destination_port": p["destination"]["in_port"],
+            "destination_rack": p["destination"]["rack_name"],
+            "segments": p["hops"],
+            "total_length_m": p["total_length_m"],
+            "cables": [s["label"] for s in p["segments"]],
+        }
+        for p in completed_paths
+    ]
+
+    return {
+        "origin": origin,
+        "origin_port": origin_port or (connected_ports[0] if len(connected_ports) == 1 else None),
+        "connected_ports": connected_ports,
+        "paths": completed_paths,
+        "related_paths": related_paths,
+        "total_paths": len(completed_paths),
+    }
+
+
+def _serialize_cable(
+    c: RackCable,
+    devices_by_id: Dict[str, Dict[str, Any]],
+) -> Dict[str, Any]:
+    a_dev = devices_by_id.get(c.a_device_id, {})
+    b_dev = devices_by_id.get(c.b_device_id, {})
+    return {
+        "id": c.id,
+        "label": c.label or f"Cable #{c.id[:6]}",
+        "cable_type": c.cable_type,
+        "status": c.status,
+        "color": c.color,
+        "length_m": c.length_m,
+        "a_rack_id": c.a_rack_id,
+        "a_rack_name": a_dev.get("rack_name", ""),
+        "a_device_id": c.a_device_id,
+        "a_device_name": a_dev.get("name", ""),
+        "a_port": c.a_port,
+        "a_port_side": c.a_port_side,
+        "b_rack_id": c.b_rack_id,
+        "b_rack_name": b_dev.get("rack_name", ""),
+        "b_device_id": c.b_device_id,
+        "b_device_name": b_dev.get("name", ""),
+        "b_port": c.b_port,
+        "b_port_side": c.b_port_side,
+        "building_cable_group_id": c.building_cable_group_id,
+        "notes": c.notes or "",
+        "created_at": c.created_at.isoformat() if c.created_at else None,
+    }
+
+
+async def _load_devices_lookup(db: AsyncSession) -> Dict[str, Dict[str, Any]]:
+    res = await db.execute(select(Rack).options(selectinload(Rack.devices)))
+    out: Dict[str, Dict[str, Any]] = {}
+    for rk in res.scalars().all():
+        for d in rk.devices:
+            out[d.id] = {
+                "id": d.id,
+                "name": d.name,
+                "device_type": d.device_type,
+                "manufacturer": d.manufacturer,
+                "model": d.model,
+                "u_position": d.u_position,
+                "u_height": d.u_height,
+                "color": d.color,
+                "rack_id": rk.id,
+                "rack_name": rk.name,
+                "floor_id": rk.floor_id,
+            }
+    return out
+
+
+async def _load_building_linked_cables(db: AsyncSession) -> List[Dict[str, Any]]:
+    """Also surface any 3D floor-plan cable runs whose from_endpoint & to_endpoint link to rack devices."""
+    cfg_res = await db.execute(select(SystemConfig).where(SystemConfig.key == "active_3d_building"))
+    cfg = cfg_res.scalar_one_or_none()
+    if not cfg or not cfg.value:
+        return []
+    try:
+        payload = json.loads(cfg.value)
+        building = payload.get("building") if isinstance(payload, dict) and "building" in payload else payload
+        floors = building.get("floors", []) if isinstance(building, dict) else []
+    except Exception:
+        return []
+
+    seen: Set[str] = set()
+    extra: List[Dict[str, Any]] = []
+    for fl in floors:
+        for f in fl.get("furniture") or []:
+            ftype = str(f.get("type") or "")
+            if "cable_" not in ftype:
+                continue
+            gid = str(f.get("cable_group") or f.get("id"))
+            if gid in seen:
+                continue
+            fe = f.get("from_endpoint")
+            te = f.get("to_endpoint")
+            if not isinstance(fe, dict) or not isinstance(te, dict):
+                continue
+            if not fe.get("device_id") or not te.get("device_id"):
+                continue
+            seen.add(gid)
+            ct = ftype.split(":")[-1].replace("cable_", "")
+            if ct not in VALID_CABLE_TYPES:
+                ct = "fiber"
+            extra.append({
+                "id": f"bldg_{gid}",
+                "label": f.get("name") or gid,
+                "cable_type": ct,
+                "status": "connected",
+                "color": f.get("color") or "#00e5ff",
+                "length_m": float(f.get("total_length_m") or f.get("w") or 0.0) or None,
+                "a_rack_id": fe.get("rack_id") or "",
+                "a_device_id": fe["device_id"],
+                "a_port": fe.get("port") or "Uplink",
+                "a_port_side": "front",
+                "b_rack_id": te.get("rack_id") or "",
+                "b_device_id": te["device_id"],
+                "b_port": te.get("port") or "Uplink",
+                "b_port_side": "front",
+                "building_cable_group_id": gid,
+                "from_3d_plan": True,
+            })
+    return extra
+
+
+@router.get("/cables")
+async def list_rack_cables(
+    rack_id: Optional[str] = Query(default=None),
+    device_id: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("racks:read")),
+):
+    """List all structured port-to-port cables (merged with linked 3D floor-plan cables)."""
+    devices_by_id = await _load_devices_lookup(db)
+    stmt = select(RackCable).order_by(RackCable.created_at.desc())
+    if rack_id:
+        stmt = stmt.where(or_(RackCable.a_rack_id == rack_id, RackCable.b_rack_id == rack_id))
+    if device_id:
+        stmt = stmt.where(or_(RackCable.a_device_id == device_id, RackCable.b_device_id == device_id))
+    rows = (await db.execute(stmt)).scalars().all()
+    cables = [_serialize_cable(c, devices_by_id) for c in rows]
+
+    # Merge any 3D floor-plan cables linked to devices (avoiding duplicates by building_cable_group_id)
+    existing_groups = {c["building_cable_group_id"] for c in cables if c.get("building_cable_group_id")}
+    for bc in await _load_building_linked_cables(db):
+        if bc["building_cable_group_id"] in existing_groups:
+            continue
+        if rack_id and bc["a_rack_id"] != rack_id and bc["b_rack_id"] != rack_id:
+            continue
+        if device_id and bc["a_device_id"] != device_id and bc["b_device_id"] != device_id:
+            continue
+        a_dev = devices_by_id.get(bc["a_device_id"], {})
+        b_dev = devices_by_id.get(bc["b_device_id"], {})
+        bc["a_rack_name"] = a_dev.get("rack_name", "")
+        bc["a_device_name"] = a_dev.get("name", "")
+        bc["b_rack_name"] = b_dev.get("rack_name", "")
+        bc["b_device_name"] = b_dev.get("name", "")
+        cables.append(bc)
+
+    return {"cables": cables, "count": len(cables)}
+
+
+@router.post("/cables", status_code=status.HTTP_201_CREATED)
+async def create_rack_cable(
+    body: RackCableCreate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("racks:write")),
+):
+    if body.cable_type not in VALID_CABLE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid cable_type '{body.cable_type}'")
+    if body.status not in VALID_CABLE_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status '{body.status}'")
+    if body.a_port_side not in VALID_PORT_SIDES or body.b_port_side not in VALID_PORT_SIDES:
+        raise HTTPException(status_code=400, detail="Port side must be 'front' or 'rear'")
+    if body.a_device_id == body.b_device_id and body.a_port.strip().lower() == body.b_port.strip().lower() and body.a_port_side == body.b_port_side:
+        raise HTTPException(status_code=400, detail="Cannot connect a port directly to itself")
+
+    a_dev = (await db.execute(select(RackDevice).where(RackDevice.id == body.a_device_id))).scalar_one_or_none()
+    b_dev = (await db.execute(select(RackDevice).where(RackDevice.id == body.b_device_id))).scalar_one_or_none()
+    if not a_dev or not b_dev:
+        raise HTTPException(status_code=404, detail="Endpoint device not found")
+
+    a_rack = (await db.execute(select(Rack).where(Rack.id == a_dev.rack_id))).scalar_one_or_none()
+    b_rack = (await db.execute(select(Rack).where(Rack.id == b_dev.rack_id))).scalar_one_or_none()
+
+    length_m = body.length_m
+    if length_m is None:
+        length_m = _estimate_cable_length_m(a_rack, a_dev, b_rack, b_dev)
+
+    label = body.label.strip() or f"Cable #{uuid.uuid4().hex[:4].upper()}"
+    cable = RackCable(
+        label=label,
+        cable_type=body.cable_type,
+        status=body.status,
+        color=body.color,
+        length_m=length_m,
+        a_rack_id=a_dev.rack_id,
+        a_device_id=a_dev.id,
+        a_port=body.a_port.strip(),
+        a_port_side=body.a_port_side,
+        b_rack_id=b_dev.rack_id,
+        b_device_id=b_dev.id,
+        b_port=body.b_port.strip(),
+        b_port_side=body.b_port_side,
+        building_cable_group_id=body.building_cable_group_id,
+        notes=body.notes,
+    )
+    db.add(cable)
+    await db.flush()
+    await _write_audit(
+        db,
+        current_user,
+        request,
+        "rack.cable.create",
+        "rack_cable",
+        cable.id,
+        {"label": cable.label, "a": f"{a_dev.name}:{cable.a_port}", "b": f"{b_dev.name}:{cable.b_port}"},
+    )
+    await db.commit()
+    devices_by_id = await _load_devices_lookup(db)
+    data = _serialize_cable(cable, devices_by_id)
+    await notifier.broadcast_json({"type": "rack_cable_updated", "action": "create", "cable_id": cable.id})
+    return data
+
+
+@router.patch("/cables/{cable_id}")
+async def update_rack_cable(
+    cable_id: str,
+    body: RackCableUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("racks:write")),
+):
+    cable = (await db.execute(select(RackCable).where(RackCable.id == cable_id))).scalar_one_or_none()
+    if not cable:
+        raise HTTPException(status_code=404, detail="Cable not found")
+    for field in ("label", "cable_type", "status", "color", "length_m", "a_port", "a_port_side", "b_port", "b_port_side", "notes"):
+        val = getattr(body, field)
+        if val is not None:
+            if field == "cable_type" and val not in VALID_CABLE_TYPES:
+                raise HTTPException(status_code=400, detail=f"Invalid cable_type '{val}'")
+            if field == "status" and val not in VALID_CABLE_STATUSES:
+                raise HTTPException(status_code=400, detail=f"Invalid status '{val}'")
+            if field in ("a_port_side", "b_port_side") and val not in VALID_PORT_SIDES:
+                raise HTTPException(status_code=400, detail="Port side must be 'front' or 'rear'")
+            setattr(cable, field, val.strip() if isinstance(val, str) else val)
+    await _write_audit(db, current_user, request, "rack.cable.update", "rack_cable", cable.id, {"label": cable.label})
+    await db.commit()
+    devices_by_id = await _load_devices_lookup(db)
+    await notifier.broadcast_json({"type": "rack_cable_updated", "action": "update", "cable_id": cable.id})
+    return _serialize_cable(cable, devices_by_id)
+
+
+@router.delete("/cables/{cable_id}")
+async def delete_rack_cable(
+    cable_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("racks:write")),
+):
+    cable = (await db.execute(select(RackCable).where(RackCable.id == cable_id))).scalar_one_or_none()
+    if not cable:
+        raise HTTPException(status_code=404, detail="Cable not found")
+    label = cable.label
+    await db.delete(cable)
+    await _write_audit(db, current_user, request, "rack.cable.delete", "rack_cable", cable_id, {"label": label})
+    await db.commit()
+    await notifier.broadcast_json({"type": "rack_cable_updated", "action": "delete", "cable_id": cable_id})
+    return {"deleted": True, "id": cable_id}
+
+
+@router.get("/devices/{device_id}/trace")
+async def trace_device_cables(
+    device_id: str,
+    port: Optional[str] = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_permission("racks:read")),
+):
+    """NetBox-style end-to-end Cable Trace for a mounted rack device (with patch-panel pass-through)."""
+    devices_by_id = await _load_devices_lookup(db)
+    if device_id not in devices_by_id:
+        raise HTTPException(status_code=404, detail="Rack device not found")
+
+    db_cables = (await db.execute(select(RackCable))).scalars().all()
+    all_cables = [_serialize_cable(c, devices_by_id) for c in db_cables]
+    existing_groups = {c["building_cable_group_id"] for c in all_cables if c.get("building_cable_group_id")}
+    for bc in await _load_building_linked_cables(db):
+        if bc["building_cable_group_id"] not in existing_groups:
+            all_cables.append(bc)
+
+    return trace_cable_paths(device_id, port, devices_by_id, all_cables)
 
 
 @router.get("/export")

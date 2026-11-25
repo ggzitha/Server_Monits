@@ -532,6 +532,7 @@
 <script src="/static/neonplan3d/basic-types.js"></script>
 <script src="/static/neonplan3d/pack-ids.js"></script>
 <script src="/static/neonplan3d/pack-names.js"></script>
+<script src="/static/js/cable_trace.js?v=20261125a"></script>
 {% endblock %}
 
 {% block content %}
@@ -1383,9 +1384,12 @@
 
     const selDev = devs.find(x => String(x.id) === String(_rackWallState.selectedDeviceId));
     const dispLabel = disp === "image" ? "🖼️ Image" : (disp === "image-label" ? "🖼️+T" : "T Label");
+    const traceBtnHtml = selDev
+      ? ` <button type="button" class="fp3d-chip" style="padding:3px 9px; font-size:11px; margin-left:6px;" onclick="window.RackCableTraceUI?.open('${escapeRackHtml(selDev.id)}', null, { lang: '${currentLang}' })">🔗 ${isId ? "Lacak Kabel" : "Trace Cables"}</button>`
+      : "";
     const footerInfo = selDev
-      ? `<strong>${escapeRackHtml(selDev.name)}</strong> · ${escapeRackHtml((selDev.manufacturer || "") + " " + (selDev.model || selDev.device_type || ""))} · U${selDev.u_position} (${selDev.u_height}U, ${escapeRackHtml(selDev.face)}) · ${Math.round(Number(selDev.power_w || 0))} W · ${escapeRackHtml(selDev.status || "active")}${selDev.serial ? " · S/N: " + escapeRackHtml(selDev.serial) : ""}`
-      : (isId ? "Klik perangkat di tampilan Depan/Belakang untuk detail, atau klik ✏️ Edit Rak untuk drag-and-drop." : "Click any device on Front/Rear elevation for details, or click ✏️ Edit Rack for drag-and-drop editing.");
+      ? `<strong>${escapeRackHtml(selDev.name)}</strong> · ${escapeRackHtml((selDev.manufacturer || "") + " " + (selDev.model || selDev.device_type || ""))} · U${selDev.u_position} (${selDev.u_height}U, ${escapeRackHtml(selDev.face)}) · ${Math.round(Number(selDev.power_w || 0))} W · ${escapeRackHtml(selDev.status || "active")}${selDev.serial ? " · S/N: " + escapeRackHtml(selDev.serial) : ""}${traceBtnHtml}`
+      : (isId ? "Klik perangkat di tampilan Depan/Belakang untuk detail & lacak kabel, atau klik ✏️ Edit Rak untuk drag-and-drop." : "Click any device on Front/Rear elevation for details & cable trace, or click ✏️ Edit Rack for drag-and-drop editing.");
 
     root.innerHTML = `
       <div class="fp3d-wall-head">

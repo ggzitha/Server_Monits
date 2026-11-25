@@ -551,6 +551,7 @@
       this.popupMode = Boolean(opts.popupMode); // true = opened from clicking a rack in 3D view (.fp3d-wall)
       this.editSidebarOpen = !this.popupMode;
       this.racks = [];
+      this.cables = [];
       this.catalog = [];
       this.selectedRackId = opts.rackId || null;
       this.selectedDeviceId = null;
@@ -586,13 +587,18 @@
 
     async loadAll(selectRackId = null, forceCatalog = false) {
       try {
-        const [rRes, catData] = await Promise.all([
+        const [rRes, cRes, catData] = await Promise.all([
           fetch("/api/v1/racks"),
+          fetch("/api/v1/racks/cables"),
           fetchSharedCatalog(forceCatalog),
         ]);
         if (rRes.ok) {
           const data = await rRes.json();
           this.racks = data.racks || [];
+        }
+        if (cRes.ok) {
+          const cData = await cRes.json();
+          this.cables = cData.cables || [];
         }
         this.catalog = catData.devices || [];
 
@@ -607,6 +613,35 @@
       } catch (err) {
         this.setBanner("err", `Failed to load racks: ${err.message}`);
       }
+    }
+
+    async createCable(payload) {
+      const res = await fetch("/api/v1/racks/cables", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrf() },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        this.setBanner("err", data.detail || "Failed to connect cable");
+        return null;
+      }
+      this.banner = { kind: "ok", text: this.t(`Connected ${data.label} (${data.length_m ?? "auto"}m)`, `Terhubung ${data.label} (${data.length_m ?? "auto"}m)`) };
+      await this.loadAll(this.selectedRackId);
+      return data;
+    }
+
+    async deleteCable(cableId) {
+      const res = await fetch(`/api/v1/racks/cables/${encodeURIComponent(cableId)}`, {
+        method: "DELETE",
+        headers: { "X-CSRF-Token": getCsrf() },
+      });
+      if (!res.ok) {
+        this.setBanner("err", "Failed to delete cable");
+        return;
+      }
+      this.banner = { kind: "ok", text: this.t("Cable disconnected.", "Kabel diputuskan.") };
+      await this.loadAll(this.selectedRackId);
     }
 
     get activeRack() {
@@ -1112,12 +1147,53 @@
       let centerHtml = `<div class="rk-panel" style="text-align:center; padding:32px; color:var(--text-muted);">${this.t("Select or create a rack to view its front & rear hardware elevation.", "Pilih atau buat rak untuk melihat elevasi perangkat depan & belakang.")}</div>`;
       if (rack) {
         const u = rack.utilization || {};
+        const devCables = dev
+          ? (this.cables || []).filter((c) => c.a_device_id === dev.id || c.b_device_id === dev.id)
+          : [];
+        const allDevicesFlat = [];
+        for (const rk of this.racks) {
+          for (const d of rk.devices || []) {
+            allDevicesFlat.push({ rackId: rk.id, rackName: rk.name, dev: d });
+          }
+        }
+        const devCablesRowsHtml = devCables.length
+          ? devCables
+              .map((c) => {
+                const isA = c.a_device_id === dev.id;
+                const localPort = isA ? c.a_port : c.b_port;
+                const localSide = isA ? c.a_port_side : c.b_port_side;
+                const remRack = isA ? c.b_rack_name : c.a_rack_name;
+                const remDev = isA ? c.b_device_name : c.a_device_name;
+                const remPort = isA ? c.b_port : c.a_port;
+                const remSide = isA ? c.b_port_side : c.a_port_side;
+                return `
+                  <div style="display:flex; align-items:center; justify-content:space-between; gap:6px; padding:6px 8px; border:1px solid var(--border-subtle); border-radius:7px; background:var(--bg-app); font-size:0.74rem; margin-bottom:5px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:6px; flex:1; min-width:180px;">
+                      <span style="width:10px; height:10px; border-radius:999px; background:${esc(c.color || "#22c55e")}; flex-shrink:0;"></span>
+                      <div>
+                        <strong>${esc(localPort)}</strong>${localSide === "rear" ? ' <span style="font-size:0.65rem; color:var(--text-muted);">[rear]</span>' : ""}
+                        <span style="color:var(--text-muted);">→ ${esc(c.label)} (${esc(c.cable_type)}${c.length_m != null ? " · " + c.length_m + "m" : ""}) →</span>
+                        <strong>${esc(remDev || "Device")}</strong> <span style="color:var(--accent-cyan);">${esc(remPort)}${remSide === "rear" ? " [rear]" : ""}</span>
+                        ${remRack ? `<span style="font-size:0.68rem; color:var(--text-muted);">(${esc(remRack)})</span>` : ""}
+                      </div>
+                    </div>
+                    <div style="display:flex; gap:4px; flex-shrink:0;">
+                      <button type="button" class="rk-btn primary" data-trace-port="${esc(localPort)}" title="${this.t("Trace end-to-end cable path", "Lacak jalur kabel ujung-ke-ujung")}">🔍 ${this.t("Trace", "Lacak")}</button>
+                      ${this.canWrite && !c.from_3d_plan ? `<button type="button" class="rk-btn danger" data-del-cable="${esc(c.id)}" title="${this.t("Disconnect cable", "Putuskan kabel")}">🗑️</button>` : ""}
+                    </div>
+                  </div>
+                `;
+              })
+              .join("")
+          : `<div style="font-size:0.73rem; color:var(--text-muted); padding:4px 0;">${this.t("No cables connected to this device yet.", "Belum ada kabel terhubung ke perangkat ini.")}</div>`;
+
         const devEditorHtml = dev
           ? `
             <div style="margin-top:12px; background:var(--bg-card-inner); border:1px solid var(--border-color); border-radius:10px; padding:10px 12px;">
               <div class="rk-title" style="margin-bottom:8px;">
                 <span>✏️ ${this.t("Edit Mounted Device", "Ubah Perangkat Terpasang")} — ${esc(dev.name)}</span>
-                <div style="display:flex; gap:5px;">
+                <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                  <button type="button" class="rk-btn primary" id="rkBtnTraceDev">🔗 ${this.t("Cable Trace", "Jejak Kabel")}</button>
                   ${this.canWrite ? `<button type="button" class="rk-btn danger" id="rkBtnDelDev">🗑️ ${this.t("Remove", "Hapus")}</button>` : ""}
                   <button type="button" class="rk-btn" id="rkBtnCloseDev">✕</button>
                 </div>
@@ -1160,6 +1236,57 @@
                 <label style="grid-column:span 2;"><span>${this.t("Notes", "Catatan")}</span><textarea id="edDevNotes" rows="2" class="rk-textarea">${esc(dev.notes)}</textarea></label>
               </div>
               ${this.canWrite ? `<div style="display:flex; justify-content:flex-end; margin-top:8px;"><button type="button" class="rk-btn primary" id="rkBtnSaveDev">💾 ${this.t("Save Device", "Simpan Perangkat")}</button></div>` : ""}
+
+              <!-- Port-to-Port Cable Connections & NetBox-Style Trace -->
+              <div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--border-color);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; gap:6px; flex-wrap:wrap;">
+                  <strong style="font-size:0.78rem; color:var(--accent-cyan);">🔗 ${this.t("Cable Connections & Trace", "Koneksi Kabel & Pelacakan")} (${devCables.length})</strong>
+                  ${devCables.length ? `<button type="button" class="rk-btn" id="rkBtnTraceAll">🔍 ${this.t("View Full SVG Trace", "Lihat Jejak SVG")}</button>` : ""}
+                </div>
+                <div>${devCablesRowsHtml}</div>
+                ${this.canWrite ? `
+                  <div style="margin-top:8px; padding:8px; border:1px dashed var(--border-color); border-radius:8px; background:var(--bg-app);">
+                    <div style="font-size:0.72rem; font-weight:700; color:var(--text-muted); margin-bottom:6px;">+ ${this.t("Connect Port to Another Device / Patch Panel", "Hubungkan Port ke Perangkat / Patch Panel Lain")}</div>
+                    <div class="rk-form-grid">
+                      <label><span>${this.t("Local Port (A)", "Port Lokal (A)")}</span><input id="cabAPort" class="rk-input" placeholder="ge-0/0/0 / Port 1 / Rear Splice" value="ge-0/0/0" /></label>
+                      <label><span>${this.t("Local Side", "Sisi Lokal")}</span>
+                        <select id="cabASide" class="rk-select">
+                          <option value="front">${this.t("Front", "Depan")}</option>
+                          <option value="rear">${this.t("Rear", "Belakang")}</option>
+                        </select>
+                      </label>
+                      <label style="grid-column:span 2;"><span>${this.t("Target Device (B)", "Perangkat Tujuan (B)")}</span>
+                        <select id="cabBDev" class="rk-select">
+                          ${allDevicesFlat.map((x) => `<option value="${esc(x.dev.id)}">${esc(x.rackName)} · U${x.dev.u_position} — ${esc(x.dev.name)} (${esc(x.dev.device_type)})</option>`).join("")}
+                        </select>
+                      </label>
+                      <label><span>${this.t("Target Port (B)", "Port Tujuan (B)")}</span><input id="cabBPort" class="rk-input" placeholder="Port 1 / ge-0/0/1 / Rear Splice" value="Port 1" /></label>
+                      <label><span>${this.t("Target Side", "Sisi Tujuan")}</span>
+                        <select id="cabBSide" class="rk-select">
+                          <option value="front">${this.t("Front", "Depan")}</option>
+                          <option value="rear">${this.t("Rear", "Belakang")}</option>
+                        </select>
+                      </label>
+                      <label><span>${this.t("Cable Label", "Label Kabel")}</span><input id="cabLabel" class="rk-input" placeholder="Cable #101" /></label>
+                      <label><span>${this.t("Type & Color", "Tipe & Warna")}</span>
+                        <div style="display:flex; gap:5px;">
+                          <select id="cabType" class="rk-select" style="flex:1;">
+                            <option value="fiber">💎 Fiber</option>
+                            <option value="ethernet">🌐 Ethernet</option>
+                            <option value="dac">⚡ DAC</option>
+                            <option value="power">🔌 Power</option>
+                            <option value="console">🖥️ Console</option>
+                          </select>
+                          <input id="cabColor" type="color" value="#22c55e" class="rk-input" style="width:36px; height:30px; padding:2px;" />
+                        </div>
+                      </label>
+                    </div>
+                    <div style="display:flex; justify-content:flex-end; margin-top:7px;">
+                      <button type="button" class="rk-btn primary" id="rkBtnAddCable">🔗 ${this.t("Connect Cable", "Hubungkan Kabel")}</button>
+                    </div>
+                  </div>
+                ` : ""}
+              </div>
             </div>
           `
           : "";
@@ -1524,7 +1651,49 @@
         });
       });
 
-      // Mounted device editor
+      // Mounted device editor + Cable Connections & Trace
+      root.querySelector("#rkBtnTraceDev")?.addEventListener("click", () => {
+        if (this.selectedDeviceId) window.RackCableTraceUI?.open(this.selectedDeviceId, null, { lang: this.lang });
+      });
+      root.querySelector("#rkBtnTraceAll")?.addEventListener("click", () => {
+        if (this.selectedDeviceId) window.RackCableTraceUI?.open(this.selectedDeviceId, null, { lang: this.lang });
+      });
+      root.querySelectorAll("[data-trace-port]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (this.selectedDeviceId) {
+            window.RackCableTraceUI?.open(this.selectedDeviceId, btn.dataset.tracePort || null, { lang: this.lang });
+          }
+        });
+      });
+      root.querySelectorAll("[data-del-cable]").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          if (btn.dataset.delCable) this.deleteCable(btn.dataset.delCable);
+        });
+      });
+      root.querySelector("#rkBtnAddCable")?.addEventListener("click", () => {
+        if (!this.selectedDeviceId) return;
+        const aPort = root.querySelector("#cabAPort")?.value?.trim() || "eth0";
+        const aSide = root.querySelector("#cabASide")?.value || "front";
+        const bDevId = root.querySelector("#cabBDev")?.value;
+        const bPort = root.querySelector("#cabBPort")?.value?.trim() || "Port 1";
+        const bSide = root.querySelector("#cabBSide")?.value || "front";
+        const label = root.querySelector("#cabLabel")?.value?.trim() || "";
+        const cableType = root.querySelector("#cabType")?.value || "fiber";
+        const color = root.querySelector("#cabColor")?.value || "#22c55e";
+        if (!bDevId) return;
+        this.createCable({
+          label,
+          cable_type: cableType,
+          color,
+          status: "connected",
+          a_device_id: this.selectedDeviceId,
+          a_port: aPort,
+          a_port_side: aSide,
+          b_device_id: bDevId,
+          b_port: bPort,
+          b_port_side: bSide,
+        });
+      });
       root.querySelector("#rkBtnCloseDev")?.addEventListener("click", () => {
         this.selectedDeviceId = null;
         this.render();

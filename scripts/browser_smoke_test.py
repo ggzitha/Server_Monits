@@ -620,6 +620,37 @@ def run_smoke_test():
             }""")
             if rk_check["hasIframe"] != 0 or rk_check["devCount"] < 1 or rk_check["loadedPhotos"] < 1 or not rk_check["hasFrontRear"] or not rk_check["hasBrandTabs"] or not rk_check["hasStats"]:
                 raise RuntimeError(f"Native Rack Elevation check failed: {rk_check}")
+            # Mount a 2nd device, connect a structured cable, and verify NetBox-style SVG Cable Trace overlay!
+            page.locator("[data-quick-mount-slug]").nth(1).click()
+            page.wait_for_timeout(450)
+            page.locator(".rk-dev-block").first.click()
+            page.wait_for_selector("#rkBtnAddCable", timeout=5000)
+            page.evaluate("""() => {
+                const sel = document.querySelector('#cabBDev');
+                if (sel && sel.options.length >= 2) sel.selectedIndex = sel.options.length - 1;
+            }""")
+            page.fill("#cabLabel", "Cable #224")
+            page.click("#rkBtnAddCable")
+            page.wait_for_selector("[data-trace-port]", timeout=6000)
+            page.locator("[data-trace-port]").first.click()
+            page.wait_for_selector("#monitsCableTraceOverlay svg", timeout=6000)
+            ct_check = page.evaluate("""() => {
+                const ov = document.querySelector('#monitsCableTraceOverlay');
+                const svg = ov?.querySelector('svg');
+                return {
+                    hasSvg: !!svg,
+                    hasCableLabel: (svg?.textContent || '').includes('Cable #224'),
+                    hasDownloadBtn: !!ov?.querySelector('#ctBtnDownloadSvg'),
+                    relatedRows: ov?.querySelectorAll('.ct-table tbody tr.ct-row-click')?.length || 0
+                };
+            }""")
+            if not ct_check["hasSvg"] or not ct_check["hasCableLabel"] or not ct_check["hasDownloadBtn"] or ct_check["relatedRows"] < 1:
+                raise RuntimeError(f"NetBox-style SVG Cable Trace check failed: {ct_check}")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(150)
+            if page.locator("#monitsCableTraceOverlay").count() != 0:
+                raise RuntimeError("Escape must close #monitsCableTraceOverlay!")
+            print(f"  ✓ NetBox-style SVG Cable Trace verified on /racks (SVG diagram + Cable #224 + Related Paths + Download SVG): {ct_check}")
             # Also verify Dark theme works cleanly on /racks
             page.evaluate("() => window.applyAppTheme('neon', true)")
             page.wait_for_timeout(200)

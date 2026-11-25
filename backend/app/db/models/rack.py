@@ -95,3 +95,54 @@ class RackDeviceTemplate(Base, TimestampMixin):
     rear_image: Mapped[str] = mapped_column(String(300), nullable=False, default="")
     notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_builtin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class RackCable(Base, TimestampMixin):
+    """Port-to-port structured cabling between mounted rack devices (supports NetBox-style multi-hop Cable Trace)."""
+    __tablename__ = "rack_cables"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=generate_uuid)
+    label: Mapped[str] = mapped_column(String(120), nullable=False, default="")
+    # fiber | ethernet | power | console | dac
+    cable_type: Mapped[str] = mapped_column(String(32), nullable=False, default="fiber")
+    # connected | planned | decommissioned
+    status: Mapped[str] = mapped_column(String(24), nullable=False, default="connected")
+    color: Mapped[str] = mapped_column(String(32), nullable=False, default="#22c55e")
+    length_m: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # A-side termination
+    a_rack_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("racks.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    a_device_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("rack_devices.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    a_port: Mapped[str] = mapped_column(String(80), nullable=False, default="eth0")
+    # front | rear (used by patch panels for front <-> rear pass-through tracing)
+    a_port_side: Mapped[str] = mapped_column(String(16), nullable=False, default="front")
+
+    # B-side termination
+    b_rack_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("racks.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    b_device_id: Mapped[str] = mapped_column(
+        String(36),
+        ForeignKey("rack_devices.id", ondelete="CASCADE"),
+        index=True,
+        nullable=False,
+    )
+    b_port: Mapped[str] = mapped_column(String(80), nullable=False, default="eth0")
+    b_port_side: Mapped[str] = mapped_column(String(16), nullable=False, default="front")
+
+    # Optional link to a 3D floor-plan cable run group_id
+    building_cable_group_id: Mapped[Optional[str]] = mapped_column(String(120), nullable=True, index=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
