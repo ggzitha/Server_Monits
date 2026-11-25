@@ -10,6 +10,7 @@ from backend.app.db.models.data_source import DataSource
 from backend.app.db.models.sensor import Sensor
 from backend.app.db.models.alert import Alert
 from backend.app.db.models.rack import Rack, RackDevice, RackDeviceTemplate, RackCable
+from backend.app.db.models.security import SecurityDevice, SecurityEvent
 
 __all__ = [
     "Base",
@@ -34,5 +35,7 @@ __all__ = [
     "RackDevice",
     "RackDeviceTemplate",
     "RackCable",
+    "SecurityDevice",
+    "SecurityEvent",
 ]
 

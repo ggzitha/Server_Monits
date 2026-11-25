@@ -164,6 +164,7 @@ export async function createNextFloorHass(options = {}) {
   let wifiBandsCache = [];
   let wifiChannelsCache = [];
   let racksCache = [];
+  let securityDevicesCache = [];
   let selectedWifiSsid = ""; // "" = All Wi-Fi APs
   let selectedWifiBand = ""; // "" | "2.4GHz" | "5GHz" | "6GHz"
   let selectedWifiChannel = null; // number | null
@@ -217,6 +218,103 @@ export async function createNextFloorHass(options = {}) {
     } catch (e) {}
   }
   await loadWifiSurveyFromDb();
+
+  function applySecurityDeviceToState(d) {
+    if (!d || !d.entity_id) return;
+    const eid = d.entity_id;
+    const kind = (d.device_kind || "cctv").toLowerCase();
+    entitiesMap[eid] = { entity_id: eid, name: d.name, area_id: d.room_id || "server_alpha" };
+
+    if (kind === "cctv") {
+      statesMap[eid] = {
+        entity_id: eid,
+        state: d.state || "recording",
+        attributes: {
+          friendly_name: d.name,
+          // Always route through our backend proxy so Frigate/go2rtc streams have zero CORS issues
+          entity_picture: d.snapshot_endpoint || `/api/v1/security/cameras/${d.id}/snapshot`,
+          alert_active: Boolean(d.alert_active),
+          alert_message: d.alert_message || "",
+          security_device_id: d.id,
+        }
+      };
+    } else if (kind === "door_access" || kind === "fingerprint") {
+      statesMap[eid] = {
+        entity_id: eid,
+        state: d.state || "locked",
+        attributes: {
+          friendly_name: d.name,
+          alert_active: Boolean(d.alert_active),
+          alert_message: d.alert_message || "",
+          security_device_id: d.id,
+        }
+      };
+    } else if (kind === "motion") {
+      statesMap[eid] = {
+        entity_id: eid,
+        state: d.state === "detected" ? "on" : "off",
+        attributes: {
+          device_class: "motion",
+          friendly_name: d.name,
+          armed: Boolean(d.armed),
+          alert_active: Boolean(d.alert_active),
+          alert_message: d.alert_message || "",
+          security_device_id: d.id,
+        }
+      };
+    } else if (kind === "contact") {
+      statesMap[eid] = {
+        entity_id: eid,
+        state: d.state === "open" ? "on" : "off",
+        attributes: {
+          device_class: "door",
+          friendly_name: d.name,
+          armed: Boolean(d.armed),
+          alert_active: Boolean(d.alert_active),
+          alert_message: d.alert_message || "",
+          security_device_id: d.id,
+        }
+      };
+    }
+
+    // Ensure placement & 3D cone exist in building floors if not already present
+    const allFloors = building?.floors || [];
+    const existsAnywhere = allFloors.some(fl => (fl.placements || []).some(p => p.entity_id === eid));
+    if (!existsAnywhere && allFloors.length > 0) {
+      const targetFl = allFloors.find(fl => fl.id === d.floor_id) || allFloors[0];
+      targetFl.placements = targetFl.placements || [];
+      const plc = {
+        entity_id: eid,
+        x: Number(d.pos_x ?? 3.0),
+        z: Number(d.pos_z ?? 2.0),
+        y: Number(d.pos_y ?? 2.8),
+        rotation: Number(d.rotation ?? 180),
+        name: d.name,
+        show_name: true,
+        marker: "always",
+      };
+      if (kind === "cctv" || kind === "motion") {
+        plc.fov = Number(d.fov_deg ?? 75);
+        plc.reach = Number(d.reach_m ?? 7.0);
+        plc.cone = Boolean(d.cone_enabled);
+      }
+      targetFl.placements.push(plc);
+    }
+  }
+
+  async function loadSecurityDevicesFromDb() {
+    try {
+      const res = await fetch("/api/v1/security/devices");
+      if (res.ok) {
+        const data = await res.json();
+        securityDevicesCache = Array.isArray(data.devices) ? data.devices : [];
+        for (const d of securityDevicesCache) {
+          applySecurityDeviceToState(d);
+        }
+      }
+    } catch (e) {}
+  }
+  await loadSecurityDevicesFromDb();
 
   function parseDbTimestampMs(ts) {
     if (ts === null || ts === undefined) return NaN;
@@ -2547,6 +2645,7 @@ export async function createNextFloorHass(options = {}) {
     },
     async refreshWifiSurveyFromDb() {
       await loadWifiSurveyFromDb();
+
       const panel = window.nfPanel;
       const v3d = panel?.shadowRoot?.querySelector("fp3d-view3d, nf-view3d");
       if (v3d && v3d.heatMode === "wifi") v3d.applyTint?.();
@@ -2622,6 +2721,29 @@ export async function createNextFloorHass(options = {}) {
     },
     getRacks() {
       return racksCache;
+    },
+    getSecurityDevices() {
+      return securityDevicesCache;
+    },
+    async refreshSecurityDevicesFromDb() {
+      await loadSecurityDevicesFromDb();
+      pushHassToPanel();
+      window.dispatchEvent(new CustomEvent("monits-security-changed", { detail: { devices: securityDevicesCache } }));
+      return securityDevicesCache;
+    },
+    async ackSecurityAlert(deviceId) {
+      try {
+        const res = await fetch(`/api/v1/security/devices/${encodeURIComponent(deviceId)}/action`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRF-Token": getCsrfToken() },
+          body: JSON.stringify({ action: "ack_alert" })
+        });
+        if (res.ok) {
+          await this.refreshSecurityDevicesFromDb();
+          return true;
+        }
+      } catch (e) {}
+      return false;
     },
     getRackByFurnitureId(fid) {
       if (!fid) return null;

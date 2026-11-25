@@ -338,6 +338,20 @@ async def page_racks(
     return templates.TemplateResponse(request=request, name="racks.html", context=ctx)
 
 
+@app.get("/security", response_class=HTMLResponse)
+async def page_security(
+    request: Request,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Unified native Security Devices Console (CCTV Wall, Door Access, Motion/Contact, Alerts)."""
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    ctx = get_template_context(request, current_user)
+    ctx["active_tab"] = "security"
+    return templates.TemplateResponse(request=request, name="security.html", context=ctx)
+
+
 @app.get("/admin/users", response_class=HTMLResponse)
 async def page_admin_users(
     request: Request,

@@ -588,6 +588,29 @@ def run_smoke_test():
                 raise RuntimeError("Expected unified .fp3d-app-header on /admin/audit")
             if page.evaluate("() => document.documentElement.dataset.theme") != "light":
                 raise RuntimeError("Expected Light theme to persist on /admin/audit!")
+            # Verify Phase 6 Security Console (/security): CCTV Wall snapshots, Door Access, Motion/Contact, Alert Overlay & Light/Dark themes
+            page.goto(f"{BASE_URL}/security")
+            page.wait_for_selector("#securityAppRoot .sec-shell", timeout=8000)
+            if page.locator("header.fp3d-app-header").count() != 1:
+                raise RuntimeError("Expected unified .fp3d-app-header on /security")
+            if page.evaluate("() => document.documentElement.dataset.theme") != "light":
+                raise RuntimeError("Expected Light theme to persist on /security!")
+            page.wait_for_function("() => { const imgs = Array.from(document.querySelectorAll('.sec-cam-frame img')); return imgs.length >= 2 && imgs.every(i => i.complete && i.naturalWidth > 0); }", timeout=8000)
+            # Trigger a security alert on a camera and verify the active alert banner appears, then acknowledge it
+            page.locator("[data-sec-act='trigger_alert']").first.click()
+            page.wait_for_selector("#secActiveAlertBanner", timeout=6000)
+            page.locator("#secActiveAlertBanner [data-sec-act='ack_alert']").first.click()
+            page.wait_for_timeout(350)
+            if page.locator("#secActiveAlertBanner").count() != 0:
+                raise RuntimeError("Acknowledging security alert must clear #secActiveAlertBanner!")
+            # Verify full CRUD Edit on a placed camera (rename & update FOV)
+            page.locator("[data-edit-dev]").first.click()
+            page.wait_for_selector("#secEditDevicePanel", timeout=5000)
+            page.fill("#secEdName", "CCTV Main Lobby Frigate")
+            page.fill("#secEdFov", "95")
+            page.click("#secSubmitEdit")
+            page.wait_for_function("() => (document.querySelector('#securityAppRoot')?.innerText || '').includes('CCTV Main Lobby Frigate')", timeout=6000)
+            print("  ✓ Phase 6 Security Console (/security) verified: CCTV Wall live snapshots, Edit CRUD, Door Access, Motion/Contact, Alert trigger/ack & unified header!")
             page.goto(f"{BASE_URL}/racks")
             page.wait_for_selector("#racksAppRoot .rk-shell", timeout=8000)
             if page.locator("header.fp3d-app-header").count() != 1:
@@ -860,6 +883,25 @@ def run_smoke_test():
             }""")
             if dark_check["htmlTheme"] != "neon" or dark_check["panelTheme"] != "neon" or dark_check["v3dTheme"] != "neon":
                 raise RuntimeError(f"Dark theme restore failed on Neon3D: {dark_check}")
+            # Verify .fp3d-style-pick 3D style selector works and is NOT overwritten by theme sync interval!
+            style_pick_check = page.evaluate("""() => {
+                const panel = document.querySelector('neonplan3d-panel');
+                const sel = panel?.shadowRoot?.querySelector('.fp3d-style-pick select');
+                if (!sel) return { ok: false, reason: 'no .fp3d-style-pick select found' };
+                const targetVal = Array.from(sel.options).map(o => o.value).find(v => v && v !== 'neon' && v !== 'day') || 'cozy';
+                sel.value = targetVal;
+                sel.dispatchEvent(new Event('change', { bubbles: true }));
+                return { ok: true, targetVal };
+            }""")
+            page.wait_for_timeout(400)
+            after_style = page.evaluate("""() => {
+                const panel = document.querySelector('neonplan3d-panel');
+                const v3d = panel?.shadowRoot?.querySelector('fp3d-view3d');
+                return { panelTheme: panel?._theme, v3dTheme: v3d?.theme };
+            }""")
+            if not style_pick_check.get("ok") or after_style["panelTheme"] != style_pick_check["targetVal"] or after_style["v3dTheme"] != style_pick_check["targetVal"]:
+                raise RuntimeError(f".fp3d-style-pick failed to apply & hold 3D style: {style_pick_check} -> {after_style}")
+            print(f"  ✓ .fp3d-style-pick 3D style picker verified ('{style_pick_check['targetVal']}' applied & held): {after_style}")
             print(f"  ✓ Theme persisted across /admin/users, /admin/settings, /admin/audit, and restored to Dark (neon): {dark_check}")
 
             persisted_check = page.evaluate("""() => {

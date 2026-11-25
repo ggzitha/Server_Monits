@@ -13,6 +13,7 @@ from backend.app.api.v1.sensors import router as sensors_router
 from backend.app.api.v1.data_sources import router as data_sources_router
 from backend.app.api.v1.wifi_survey import router as wifi_survey_router
 from backend.app.api.v1.racks import router as racks_router
+from backend.app.api.v1.security import router as security_router
 
 api_router = APIRouter()
 api_router.include_router(setup_router)
@@ -28,5 +29,6 @@ api_router.include_router(sensors_router)
 api_router.include_router(data_sources_router)
 api_router.include_router(wifi_survey_router)
 api_router.include_router(racks_router)
+api_router.include_router(security_router)
 
 

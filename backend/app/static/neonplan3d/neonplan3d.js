@@ -4797,6 +4797,7 @@ background:#0b1120f2;color:#e6f7ff;border:1px solid #37e0ff66;border-radius:12px
             <button id="btnVirtualDb" title="DB Temp/Humidity Sensors & Virtual Lights" @click=${()=>window.toggleMonitsDrawer?.("devices")}>💡 ${(this.hass?.language||"en").startsWith("id")?"Sensor DB & Lampu":"DB Sensors & Lights"}</button>
             <button id="btnCablesMgr" title="3D Cabling (Below Floor / Wall / Ceiling)" @click=${()=>window.toggleMonitsDrawer?.("cables")}>🔌 ${(this.hass?.language||"en").startsWith("id")?"Kabel 3D":"3D Cables"}</button>
             <button id="btnRacksMgr" title="Racks & Elevation View" @click=${()=>window.navigateWithSave?.("/racks")}>🗄️ ${(this.hass?.language||"").startsWith("id")?"Rak":"Racks"}</button>
+            <button id="btnSecurityMgr" title="Security Devices & CCTV Wall" @click=${()=>window.navigateWithSave?.("/security")}>🛡️ ${(this.hass?.language||"").startsWith("id")?"Keamanan":"Security"}</button>
             <button id="btnWifiSurvey" title="Wi-Fi RSSI Survey & AP Heatmap" @click=${()=>window.toggleMonitsDrawer?.("wifi")}>📶 ${(this.hass?.language||"en").startsWith("id")?"Survei Wi-Fi":"Wi-Fi Survey"}</button>
           </div>`:y}
           <span class="fp3d-grow"></span>
@@ -4818,7 +4819,7 @@ background:#0b1120f2;color:#e6f7ff;border:1px solid #37e0ff66;border-radius:12px
                   <span aria-hidden="true">🎨</span>
                   <select
                     aria-label=${this.t("style")}
-                    @change=${n=>{this._theme=n.target.value,Y.set("theme",this._theme),window.applyAppTheme?.(this._theme==="day"?"light":"neon",!0)}}
+                    @change=${n=>{let st=n.target.value;this._theme=st,Y.set("theme",st),window.__monitsCustom3dStyle=st;let v=this.renderRoot?.querySelector("fp3d-view3d, nf-view3d");v&&(v.theme=st,v.requestUpdate?.()),this.requestUpdate?.()}}
                   >
                     ${ha(n=>this.t(n),this._theme,{auto:!0,house:!0})}
                   </select>

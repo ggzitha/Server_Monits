@@ -30,12 +30,26 @@
     </p>
 
     <div class="form-group">
-      <label class="form-label">go2rtc API Base URL</label>
+      <label class="form-label">go2rtc / Frigate API Base URL</label>
       <div style="display: flex; gap: 0.5rem;">
-        <input type="text" id="go2rtcUrl" class="form-control" placeholder="http://frigate:1984" value="http://frigate:1984" style="flex: 1;">
+        <input type="text" id="go2rtcUrl" class="form-control" placeholder="http://frigate:1984 or https://cctv.local" value="http://frigate:1984" style="flex: 1;">
         <button type="button" class="btn btn-outline" id="btnTestGateway" onclick="handleTestGateway()">
           Test Gateway
         </button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-top: 0.6rem;">
+        <div>
+          <label class="form-label" style="font-size: 0.75rem;">Basic Auth Username (Optional)</label>
+          <input type="text" id="go2rtcUsername" class="form-control" placeholder="nginx / frigate user" autocomplete="off">
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 0.75rem;">Basic Auth Password (Optional)</label>
+          <input type="password" id="go2rtcPassword" class="form-control" placeholder="••••••••" autocomplete="new-password">
+        </div>
+        <div>
+          <label class="form-label" style="font-size: 0.75rem;">Bearer Token (Optional)</label>
+          <input type="password" id="go2rtcToken" class="form-control" placeholder="Optional API token" autocomplete="new-password">
+        </div>
       </div>
       <div id="gatewayTestResult" style="display: none; margin-top: 0.5rem; font-size: 0.8rem; padding: 0.5rem; border-radius: 4px;"></div>
       <div style="margin-top: 0.5rem; font-size: 0.75rem; color: #f59e0b; line-height: 1.4;">
@@ -259,6 +273,9 @@
       
       // Gateway
       if (data.go2rtc_url) document.getElementById('go2rtcUrl').value = data.go2rtc_url;
+      if (data.go2rtc_username) document.getElementById('go2rtcUsername').value = data.go2rtc_username;
+      if (data.go2rtc_password_set) document.getElementById('go2rtcPassword').value = '••••••••';
+      if (data.go2rtc_token_set) document.getElementById('go2rtcToken').value = '••••••••';
 
       // MQTT
       if (data.mqtt_host) document.getElementById('mqttHost').value = data.mqtt_host;
@@ -353,7 +370,12 @@
           'Content-Type': 'application/json',
           'X-CSRF-Token': getCsrfToken()
         },
-        body: JSON.stringify({ url: url })
+        body: JSON.stringify({
+          url: url,
+          username: document.getElementById('go2rtcUsername')?.value || '',
+          password: document.getElementById('go2rtcPassword')?.value || '',
+          token: document.getElementById('go2rtcToken')?.value || ''
+        })
       });
       const data = await res.json();
       if (data.success) {
@@ -451,6 +473,9 @@
     const payload = {
       settings: {
         go2rtc_url: document.getElementById('go2rtcUrl').value,
+        go2rtc_username: document.getElementById('go2rtcUsername')?.value || '',
+        go2rtc_password: document.getElementById('go2rtcPassword')?.value || '',
+        go2rtc_token: document.getElementById('go2rtcToken')?.value || '',
         mqtt_host: document.getElementById('mqttHost').value,
         mqtt_port: document.getElementById('mqttPort').value,
         mqtt_username: document.getElementById('mqttUsername').value,

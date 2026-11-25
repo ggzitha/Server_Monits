@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('nav_security') }} - {{ _('app_name') }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:1rem;">
+  <div>
+    <h2 style="color:var(--accent-cyan); font-size:1.35rem; margin:0 0 2px 0;">🛡️ {{ _('nav_security') }}</h2>
+    <p style="color:var(--text-muted); font-size:0.82rem; margin:0;">
+      {{ _('security_page_subtitle') }}
+    </p>
+  </div>
+  <a href="/" class="btn btn-secondary btn-sm">← {{ _('nav_dashboard') }}</a>
+</div>
+
+<div id="securityAppRoot"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/security_console.js?v=20261125b"></script>
+<script>
+  const canWriteSecurity = {{ 'true' if current_user and (current_user.is_admin or 'security:write' in (current_user.permissions or [])) else 'false' }};
+  window._secCtrl = window.SecurityConsoleUI.mount(document.getElementById("securityAppRoot"), {
+    lang: "{{ current_lang|default('en') }}",
+    canWrite: canWriteSecurity,
+  });
+</script>
+{% endblock %}

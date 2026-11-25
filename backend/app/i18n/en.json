@@ -92,6 +92,8 @@
   "rack_utilization": "U-Space Utilization",
   "rack_power_budget": "Power Draw",
   "rack_new": "New Rack",
-  "rack_import_netbox": "Import NetBox YAML/JSON"
+  "rack_import_netbox": "Import NetBox YAML/JSON",
+  "nav_security": "Security",
+  "security_page_subtitle": "CCTV Camera Wall, Biometric Door Access, Motion & Contact Sensors, 3D FOV Cones & Live Alert Overlays"
 }
 

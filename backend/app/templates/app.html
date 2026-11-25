@@ -1024,7 +1024,7 @@
 </aside>
 
 <script type="module">
-  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261123a";
+  import { createNextFloorHass } from "/static/js/nextfloor_adapter.js?v=20261125b";
 
   const currentLang = "{{ current_lang|default('en') }}";
   const isId = currentLang === "id";
@@ -1199,14 +1199,26 @@
     }
 
     const themeKey = isLight ? "light" : "neon";
-    if (forceTheme || lastStyledTheme !== themeKey) {
+    if (forceTheme) {
       lastStyledTheme = themeKey;
+      window.__monitsCustom3dStyle = null;
       const desired3d = isLight ? "day" : "neon";
-      if (panel._theme !== desired3d && (panel._theme === "neon" || panel._theme === "day" || !panel._theme)) {
+      if (panel._theme !== desired3d) {
         panel._theme = desired3d;
         panel.requestUpdate?.();
       }
-      if (v3d && v3d.theme !== desired3d && (v3d.theme === "neon" || v3d.theme === "day" || !v3d.theme)) {
+      if (v3d && v3d.theme !== desired3d) {
+        v3d.theme = desired3d;
+        v3d.requestUpdate?.();
+      }
+    } else if (lastStyledTheme !== themeKey && !window.__monitsCustom3dStyle) {
+      lastStyledTheme = themeKey;
+      const desired3d = isLight ? "day" : "neon";
+      if (!panel._theme || panel._theme === "neon" || panel._theme === "day") {
+        panel._theme = desired3d;
+        panel.requestUpdate?.();
+      }
+      if (v3d && (!v3d.theme || v3d.theme === "neon" || v3d.theme === "day")) {
         v3d.theme = desired3d;
         v3d.requestUpdate?.();
       }
@@ -2494,9 +2506,41 @@
     }
   };
 
+  function renderSecurityAlertOverlay() {
+    const devs = window.monitsApi?.getSecurityDevices?.() || [];
+    const active = devs.filter(d => d.alert_active);
+    let box = document.getElementById("monitsSecurityAlertOverlay");
+    if (!active.length) {
+      if (box) box.remove();
+      return;
+    }
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "monitsSecurityAlertOverlay";
+      box.style.cssText = "position:fixed; top:60px; right:16px; z-index:2900; max-width:420px; display:flex; flex-direction:column; gap:6px; padding:10px 14px; border-radius:12px; background:var(--bg-drawer); backdrop-filter:blur(16px); border:1.5px solid rgba(239,68,68,0.75); box-shadow:0 8px 28px rgba(239,68,68,0.28); color:var(--text-main); font-size:0.8rem;";
+      document.body.appendChild(box);
+    }
+    box.innerHTML = `
+      <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <strong style="color:var(--accent-red);">🚨 ${active.length} ${isId ? "Peringatan Keamanan" : "Security Alert(s)"}</strong>
+        <button type="button" class="monits-pill-btn" style="padding:2px 8px; font-size:0.7rem;" onclick="window.navigateWithSave('/security')">🛡️ ${isId ? "Keamanan" : "Security Console"}</button>
+      </div>
+      ${active.map(a => `
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 8px; border-radius:8px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.35);">
+          <div style="min-width:0;">
+            <strong>${escapeRackHtml(a.name)}</strong>
+            <div style="font-size:0.72rem; color:var(--text-muted);">${escapeRackHtml(a.alert_message || a.state)}</div>
+          </div>
+          <button type="button" class="monits-pill-btn on" style="padding:3px 8px; font-size:0.7rem; flex-shrink:0;" onclick="window.monitsApi?.ackSecurityAlert('${escapeRackHtml(a.id)}')">✓ Ack</button>
+        </div>
+      `).join("")}
+    `;
+  }
+  window.addEventListener("monits-security-changed", renderSecurityAlertOverlay);
+
   async function init() {
     try {
-      await import("/static/neonplan3d/neonplan3d.js?v=20261123a");
+      await import("/static/neonplan3d/neonplan3d.js?v=20261125c");
 
       const panel = document.getElementById("monitPanel");
       if (panel) {
@@ -2509,6 +2553,7 @@
     panel.hass = hass;
     panel.narrow = window.innerWidth < 870;
     window.nfPanel = panel;
+    renderSecurityAlertOverlay();
 
     setInterval(() => {
       styleIntegratedPanel();

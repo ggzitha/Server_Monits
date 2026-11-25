@@ -24,6 +24,9 @@ class UpdateSettingsRequest(BaseModel):
 
 class TestGatewayRequest(BaseModel):
     url: Optional[str] = None
+    username: Optional[str] = None
+    password: Optional[str] = None
+    token: Optional[str] = None
 
 
 class TestMqttRequest(BaseModel):
@@ -44,9 +47,9 @@ async def get_system_settings(db: AsyncSession = Depends(get_db)):
     rows = res.scalars().all()
     result = {}
     for row in rows:
-        if row.key == "mqtt_password":
-            result["mqtt_password_set"] = bool(row.value)
-            result["mqtt_password"] = "••••••••" if row.value else ""
+        if row.key in ("mqtt_password", "go2rtc_password", "go2rtc_token"):
+            result[f"{row.key}_set"] = bool(row.value)
+            result[row.key] = "••••••••" if row.value else ""
         else:
             result[row.key] = row.value
 
@@ -81,7 +84,7 @@ async def update_system_settings(req: UpdateSettingsRequest, db: AsyncSession = 
             mqtt_config_changed = True
 
         # Handle sensitive encryption
-        if key == "mqtt_password":
+        if key in ("mqtt_password", "go2rtc_password", "go2rtc_token"):
             if val and val != "••••••••":
                 encrypted_val = encrypt_secret(val)
                 stmt = select(SystemConfig).where(SystemConfig.key == key)
@@ -142,39 +145,99 @@ async def update_system_settings(req: UpdateSettingsRequest, db: AsyncSession = 
 
 @router.post("/test-gateway", dependencies=[Depends(require_permission("settings:read"))])
 async def test_gateway(req: TestGatewayRequest, db: AsyncSession = Depends(get_db)):
-    """Test connection to Frigate go2rtc REST API endpoint."""
-    target_url = req.url
-    if not target_url:
-        stmt = select(SystemConfig).where(SystemConfig.key == "go2rtc_url")
-        res = await db.execute(stmt)
-        cfg = res.scalar_one_or_none()
-        target_url = cfg.value if cfg else settings.GO2RTC_API_URL or "http://frigate:1984"
+    """Test connection to Frigate / go2rtc REST API endpoint (supports Basic Auth & Bearer token)."""
+    cfg_rows = (await db.execute(
+        select(SystemConfig).where(SystemConfig.key.in_(("go2rtc_url", "go2rtc_username", "go2rtc_password", "go2rtc_token")))
+    )).scalars().all()
+    cfg_map = {r.key: r.value for r in cfg_rows}
 
-    target_url = target_url.strip().rstrip("/")
+    target_url = (req.url or cfg_map.get("go2rtc_url") or settings.GO2RTC_API_URL or "http://frigate:1984").strip().rstrip("/")
     if not target_url:
         return {"success": False, "message": "No Stream Gateway URL provided"}
 
-    api_url = f"{target_url}/api/streams"
+    username = (req.username if req.username is not None else cfg_map.get("go2rtc_username") or "").strip()
+    password = req.password
+    if not password or password == "••••••••":
+        raw_pw = cfg_map.get("go2rtc_password") or ""
+        try:
+            password = decrypt_secret(raw_pw) if raw_pw else ""
+        except Exception:
+            password = ""
+
+    token = req.token
+    if not token or token == "••••••••":
+        raw_tok = cfg_map.get("go2rtc_token") or ""
+        try:
+            token = decrypt_secret(raw_tok) if raw_tok else ""
+        except Exception:
+            token = ""
+
+    auth = httpx.BasicAuth(username, password) if (username or password) else None
+    headers = {"Authorization": f"Bearer {token.strip()}"} if token and token.strip() else {}
+
+    # Extract origin for Frigate 0.14+ JWT login (/api/login -> frigate_token cookie)
+    from urllib.parse import urlparse
+    parsed_u = urlparse(target_url)
+    origin = f"{parsed_u.scheme}://{parsed_u.netloc}" if parsed_u.scheme and parsed_u.netloc else target_url
+
+    # Build candidate stream list URLs: supports direct go2rtc (:1984) AND Frigate-proxied (/api/go2rtc/streams)
+    low = target_url.lower()
+    if low.endswith("/api/streams") or low.endswith("/api/go2rtc/streams"):
+        candidates = [target_url]
+    elif "/api/go2rtc/streams/" in low:
+        candidates = [target_url, target_url.rsplit("/", 1)[0]]
+    else:
+        candidates = [f"{target_url}/api/go2rtc/streams", f"{target_url}/api/streams"]
+
+    last_status = None
+    last_body = ""
+    last_url = candidates[0]
+    frigate_logged_in = False
     try:
-        async with httpx.AsyncClient(timeout=4.0) as client:
-            resp = await client.get(api_url)
-            if resp.status_code == 200:
-                data = resp.json()
-                streams = list(data.keys()) if isinstance(data, dict) else []
-                return {
-                    "success": True,
-                    "message": f"Successfully connected to go2rtc API. {len(streams)} active stream(s) found.",
-                    "streams": streams,
-                }
-            else:
-                return {
-                    "success": False,
-                    "message": f"Gateway responded with HTTP status {resp.status_code}: {resp.text[:200]}",
-                }
+        async with httpx.AsyncClient(timeout=6.0, verify=False, follow_redirects=True, headers=headers) as client:
+            # 1. Try Frigate 0.14–0.18 JWT login first when username/password are provided
+            if username and password:
+                try:
+                    login_resp = await client.post(
+                        f"{origin}/api/login",
+                        json={"user": username, "password": password},
+                    )
+                    if login_resp.status_code == 200:
+                        frigate_logged_in = True
+                except Exception:
+                    pass
+
+            req_auth = None if frigate_logged_in else auth
+            for api_url in candidates:
+                last_url = api_url
+                resp = await client.get(api_url, auth=req_auth)
+                last_status = resp.status_code
+                last_body = resp.text[:200]
+                if resp.status_code == 200:
+                    try:
+                        data = resp.json()
+                    except Exception:
+                        continue
+                    streams = list(data.keys()) if isinstance(data, dict) else []
+                    mode_lbl = "Frigate JWT" if frigate_logged_in else ("Basic Auth" if req_auth else "Open")
+                    return {
+                        "success": True,
+                        "message": f"Successfully connected to go2rtc API ({api_url}) via {mode_lbl}. {len(streams)} active stream(s) found.",
+                        "streams": streams,
+                    }
+                if resp.status_code == 401:
+                    return {
+                        "success": False,
+                        "message": "Gateway responded with HTTP status 401 (Authorization Required). Check your Frigate username & password.",
+                    }
+        return {
+            "success": False,
+            "message": f"Gateway responded with HTTP status {last_status}: {last_body}",
+        }
     except Exception as e:
         return {
             "success": False,
-            "message": f"Could not connect to go2rtc at {api_url}: {str(e)}",
+            "message": f"Could not connect to go2rtc at {last_url}: {str(e)}",
         }
 
 
