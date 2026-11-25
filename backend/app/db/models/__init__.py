@@ -8,7 +8,7 @@ from backend.app.db.models.floor_plan import FloorPlan, Room
 from backend.app.db.models.placed_object import PlacedObject
 from backend.app.db.models.data_source import DataSource
 from backend.app.db.models.sensor import Sensor
-from backend.app.db.models.alert import Alert
+from backend.app.db.models.alert import Alert, AlertRule
 from backend.app.db.models.rack import Rack, RackDevice, RackDeviceTemplate, RackCable
 from backend.app.db.models.security import SecurityDevice, SecurityEvent
 
@@ -31,6 +31,7 @@ __all__ = [
     "DataSource",
     "Sensor",
     "Alert",
+    "AlertRule",
     "Rack",
     "RackDevice",
     "RackDeviceTemplate",

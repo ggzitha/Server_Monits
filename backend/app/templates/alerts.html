@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+
+{% block title %}{{ _('nav_alerts') }} - {{ _('app_name') }}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:1rem;">
+  <div>
+    <h2 style="color:var(--accent-cyan); font-size:1.35rem; margin:0 0 2px 0;">🔔 {{ _('nav_alerts') }}</h2>
+    <p style="color:var(--text-muted); font-size:0.82rem; margin:0;">
+      {{ _('alerts_page_subtitle') }}
+    </p>
+  </div>
+  <a href="/" class="btn btn-secondary btn-sm">← {{ _('nav_dashboard') }}</a>
+</div>
+
+<div id="alertsAppRoot"></div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/alerts_reports.js?v=20261125a"></script>
+<script>
+  const canWriteAlerts = {{ 'true' if current_user and (current_user.is_admin or 'sensors:write' in (current_user.permissions or [])) else 'false' }};
+  window._alertsCtrl = window.AlertsReportsUI.mount(document.getElementById("alertsAppRoot"), {
+    lang: "{{ current_lang|default('en') }}",
+    canWrite: canWriteAlerts,
+  });
+</script>
+{% endblock %}

@@ -94,6 +94,8 @@
   "rack_new": "New Rack",
   "rack_import_netbox": "Import NetBox YAML/JSON",
   "nav_security": "Security",
-  "security_page_subtitle": "CCTV Camera Wall, Biometric Door Access, Motion & Contact Sensors, 3D FOV Cones & Live Alert Overlays"
+  "security_page_subtitle": "CCTV Camera Wall, Biometric Door Access, Motion & Contact Sensors, 3D FOV Cones & Live Alert Overlays",
+  "nav_alerts": "Alerts & Reports",
+  "alerts_page_subtitle": "Threshold Alert Rules, Unified Incident Timeline & Exportable DCIM Executive Reports"
 }
 

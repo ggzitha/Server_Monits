@@ -94,6 +94,8 @@
   "rack_new": "Rak Baru",
   "rack_import_netbox": "Impor NetBox YAML/JSON",
   "nav_security": "Keamanan",
-  "security_page_subtitle": "Dinding Kamera CCTV, Akses Pintu Biometrik, Sensor Gerak & Kontak, Kerucut FOV 3D & Overlay Peringatan Langsung"
+  "security_page_subtitle": "Dinding Kamera CCTV, Akses Pintu Biometrik, Sensor Gerak & Kontak, Kerucut FOV 3D & Overlay Peringatan Langsung",
+  "nav_alerts": "Peringatan & Laporan",
+  "alerts_page_subtitle": "Aturan Ambang Batas, Linimasa Insiden Terpadu & Laporan Eksekutif DCIM yang Dapat Diekspor"
 }
 

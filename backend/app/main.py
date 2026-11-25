@@ -177,6 +177,11 @@ async def csrf_middleware(request: Request, call_next):
     response = await call_next(request)
     if request.url.path.startswith("/static/"):
         response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    # Production security hardening headers
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     return response
 
 
@@ -209,6 +214,24 @@ async def healthz():
         "app_env": settings.APP_ENV,
         "timestamp": int(time.time()),
     }
+
+
+@app.get("/ready", tags=["monitoring"])
+async def readiness_probe():
+    """Readiness probe: returns 200 when ready to serve traffic, 503 if database is unreachable."""
+    from fastapi.responses import JSONResponse
+    engine = get_engine()
+    if engine is None:
+        return {"ready": True, "database": "not_configured", "timestamp": int(time.time())}
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        return {"ready": True, "database": "connected", "timestamp": int(time.time())}
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={"ready": False, "database": f"unhealthy: {e}", "timestamp": int(time.time())},
+        )
 
 
 @app.get("/metrics", dependencies=[Depends(verify_metrics_access)], tags=["monitoring"])
@@ -350,6 +373,20 @@ async def page_security(
     ctx = get_template_context(request, current_user)
     ctx["active_tab"] = "security"
     return templates.TemplateResponse(request=request, name="security.html", context=ctx)
+
+
+@app.get("/alerts", response_class=HTMLResponse)
+async def page_alerts(
+    request: Request,
+    current_user: Optional[User] = Depends(get_current_user_optional),
+):
+    """Unified native Alerting, Threshold Rules, Incident Timeline & Executive Reports page."""
+    if not current_user:
+        return RedirectResponse(url="/login", status_code=302)
+
+    ctx = get_template_context(request, current_user)
+    ctx["active_tab"] = "alerts"
+    return templates.TemplateResponse(request=request, name="alerts.html", context=ctx)
 
 
 @app.get("/admin/users", response_class=HTMLResponse)

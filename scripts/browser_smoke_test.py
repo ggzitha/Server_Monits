@@ -967,6 +967,62 @@ def run_smoke_test():
                 raise RuntimeError(f"Device positions drifted after Backup/Export Import + reload! Got: {after_reload_pos}")
             print(f"  ✓ Full Backup Export/Restore & File Export/Import preserved EXACT device/sensor/rack coordinates across reload: {after_reload_pos}")
 
+            # Phase 7: Verify Unified Alerts, Threshold Rules CRUD, Incident Timeline & Executive Reports (/alerts)
+            print(">> [8/8] Verifying Phase 7 Alerts, Threshold Rules CRUD, Incidents & Exportable Reports (/alerts)...")
+            page.goto(f"{BASE_URL}/alerts")
+            page.wait_for_selector("#alertsAppRoot .ar-kpis", timeout=10000)
+            page.wait_for_selector("#alertsAppRoot table.ar-table tbody tr", timeout=10000)
+
+            # Verify unified header & active Alerts link
+            alerts_nav_active = page.evaluate("""() => {
+                const a = document.querySelector('.fp3d-app-header a[href="/alerts"]');
+                return !!a && a.classList.contains('active');
+            }""")
+            if not alerts_nav_active:
+                raise RuntimeError("Unified header missing active /alerts link on /alerts page!")
+
+            # Create a custom threshold rule via UI form
+            page.click("#arNewRuleBtn")
+            page.wait_for_selector("#arRuleForm", timeout=5000)
+            page.fill('#arRuleForm input[name="name"]', "Smoke Test Overheat Rule")
+            page.fill('#arRuleForm input[name="warning_threshold"]', "26.5")
+            page.fill('#arRuleForm input[name="critical_threshold"]', "29.5")
+            page.click('#arRuleForm button[type="submit"]')
+            page.wait_for_function("() => (document.querySelector('#alertsAppRoot')?.innerText || '').includes('Smoke Test Overheat Rule')", timeout=8000)
+
+            # Evaluate rules
+            page.click("#arEvalRulesBtn")
+            page.wait_for_timeout(400)
+
+            # Switch to Incident Timeline tab, log manual incident & resolve it
+            page.click('.ar-tab-btn[data-tab="incidents"]')
+            page.wait_for_selector("#arNewIncBtn", timeout=5000)
+            page.click("#arNewIncBtn")
+            page.wait_for_selector("#arIncidentForm", timeout=5000)
+            page.fill('#arIncidentForm input[name="message"]', "Smoke Test Manual Incident")
+            page.click('#arIncidentForm button[type="submit"]')
+            page.wait_for_function("() => (document.querySelector('#alertsAppRoot')?.innerText || '').includes('Smoke Test Manual Incident')", timeout=8000)
+            page.locator('.ar-inc-status[data-status="resolved"]').first.click()
+            page.wait_for_timeout(400)
+
+            # Switch to Reports tab & verify export endpoints
+            page.click('.ar-tab-btn[data-tab="reports"]')
+            page.wait_for_selector("#arExportCsvBtn", timeout=5000)
+            export_ok = page.evaluate("""async () => {
+                const rCsv = await fetch('/api/v1/alerts/reports/export?format=csv');
+                const rHtml = await fetch('/api/v1/alerts/reports/export?format=html');
+                const rReady = await fetch('/ready');
+                return {
+                    csv: rCsv.status,
+                    html: rHtml.status,
+                    ready: rReady.status,
+                    nosniff: rReady.headers.get('x-content-type-options')
+                };
+            }""")
+            if export_ok["csv"] != 200 or export_ok["html"] != 200 or export_ok["ready"] != 200 or export_ok["nosniff"] != "nosniff":
+                raise RuntimeError(f"Phase 7 reports/hardening check failed: {export_ok}")
+            print(f"  ✓ Phase 7 /alerts UI (Rules CRUD, Incident Timeline, Reports Export & Security Headers) PASSED: {export_ok}")
+
             # Verify zero external outbound requests
             if outbound_requests:
                 raise RuntimeError(f"Detected {len(outbound_requests)} external network request(s): {outbound_requests}")
